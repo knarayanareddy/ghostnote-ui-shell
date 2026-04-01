@@ -86,6 +86,13 @@ const Inbox = () => {
 
   const handleSummonAnother = () => {
     stashedNote.current = null;
+    setHasStashed(false);
+    setState({ status: "idle" });
+  };
+
+  const handleDiscard = () => {
+    stashedNote.current = null;
+    setHasStashed(false);
     setState({ status: "idle" });
   };
 
