@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Ghost } from "lucide-react";
 import TagChips from "@/components/TagChips";
 import { supabase } from "@/integrations/supabase/client";
+import { useStats } from "@/components/StatsProvider";
 
 const BANNED_WORDS = [
   "fuck", "shit", "damn", "bitch", "ass", "bastard", "dick", "cunt",

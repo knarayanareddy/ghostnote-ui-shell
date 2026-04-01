@@ -7,6 +7,7 @@ import EmptyState from "@/components/EmptyState";
 import ReportDialog from "@/components/ReportDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useStats } from "@/components/StatsProvider";
 
 interface ClaimedNote {
   id: string;
