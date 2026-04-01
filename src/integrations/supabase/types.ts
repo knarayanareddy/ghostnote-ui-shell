@@ -14,13 +14,104 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      notes: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          delivered_at: string | null
+          id: string
+          opened_at: string | null
+          recipient_id: string | null
+          status: string
+          tag: string | null
+        }
+        Insert: {
+          author_id: string
+          body: string
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          opened_at?: string | null
+          recipient_id?: string | null
+          status?: string
+          tag?: string | null
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          opened_at?: string | null
+          recipient_id?: string | null
+          status?: string
+          tag?: string | null
+        }
+        Relationships: []
+      }
+      reports: {
+        Row: {
+          created_at: string
+          id: string
+          note_id: string
+          reason: string | null
+          reporter_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          note_id: string
+          reason?: string | null
+          reporter_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          note_id?: string
+          reason?: string | null
+          reporter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reports_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      claim_ghost_note: {
+        Args: { p_tag?: string }
+        Returns: {
+          author_id: string
+          body: string
+          created_at: string
+          delivered_at: string | null
+          id: string
+          opened_at: string | null
+          recipient_id: string | null
+          status: string
+          tag: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "notes"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      mark_note_opened: { Args: { p_note_id: string }; Returns: undefined }
+      report_note: {
+        Args: { p_note_id: string; p_reason?: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
