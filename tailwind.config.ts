@@ -74,7 +74,7 @@ export default {
       },
       boxShadow: {
         paper: "0 2px 8px -2px hsl(var(--paper-shadow) / 0.4), 0 1px 3px -1px hsl(var(--paper-shadow) / 0.3)",
-        "paper-hover": "0 4px 16px -4px hsl(var(--paper-shadow) / 0.5), 0 2px 6px -2px hsl(var(--paper-shadow) / 0.3)",
+        "paper-hover": "0 6px 20px -6px hsl(var(--paper-shadow) / 0.5), 0 3px 8px -3px hsl(var(--paper-shadow) / 0.3)",
       },
       keyframes: {
         "accordion-down": {
@@ -86,14 +86,35 @@ export default {
           to: { height: "0" },
         },
         "fade-in": {
-          from: { opacity: "0", transform: "translateY(8px)" },
+          from: { opacity: "0", transform: "translateY(10px)" },
           to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "slide-up": {
+          from: { opacity: "0", transform: "translateY(20px) scale(0.98)" },
+          to: { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
+        "drift": {
+          "0%": { opacity: "1", transform: "translateY(0) scale(1)" },
+          "100%": { opacity: "0", transform: "translateY(-40px) scale(0.95)" },
+        },
+        "drift-in": {
+          "0%": { opacity: "0", transform: "translateY(30px) rotate(-1deg)" },
+          "60%": { opacity: "1", transform: "translateY(-4px) rotate(0.5deg)" },
+          "100%": { opacity: "1", transform: "translateY(0) rotate(0deg)" },
+        },
+        "ghost-float": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-6px)" },
         },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-        "fade-in": "fade-in 0.4s ease-out",
+        "fade-in": "fade-in 0.4s ease-out forwards",
+        "slide-up": "slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+        "drift": "drift 1.2s ease-in forwards",
+        "drift-in": "drift-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+        "ghost-float": "ghost-float 3s ease-in-out infinite",
       },
     },
   },
