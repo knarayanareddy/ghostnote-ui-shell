@@ -7,16 +7,7 @@ import { Ghost } from "lucide-react";
 import TagChips from "@/components/TagChips";
 import { supabase } from "@/integrations/supabase/client";
 import { useStats } from "@/components/StatsProvider";
-
-const BANNED_WORDS = [
-  "fuck", "shit", "damn", "bitch", "ass", "bastard", "dick", "cunt",
-  "nigger", "nigga", "faggot", "retard", "kys", "kill yourself",
-];
-
-function containsBannedWord(text: string): boolean {
-  const lower = text.toLowerCase();
-  return BANNED_WORDS.some((w) => lower.includes(w));
-}
+import { findBannedContent } from "@/lib/bannedFilter";
 
 type PageState = "form" | "sending" | "success" | "error";
 
