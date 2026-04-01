@@ -275,6 +275,12 @@ const Inbox = () => {
           </Button>
         )}
       </div>
+
+      {isSealed && (
+        <p className="text-xs text-muted-foreground/60 text-center">
+          It'll still be saved in your journal.
+        </p>
+      )}
     </div>
   );
 };
