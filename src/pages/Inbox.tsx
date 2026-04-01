@@ -99,6 +99,7 @@ const Inbox = () => {
   const handleReported = () => {
     setReportOpen(false);
     stashedNote.current = null;
+    setHasStashed(false);
     setState({ status: "empty" });
     toast("Reported. Thanks for keeping GhostNote kind.");
   };
