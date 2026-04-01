@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Ghost } from "lucide-react";
+import { Ghost, Flag } from "lucide-react";
 import NoteCard from "@/components/NoteCard";
 import EmptyState from "@/components/EmptyState";
+import ReportDialog from "@/components/ReportDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface ClaimedNote {
   id: string;
@@ -19,6 +21,7 @@ const Inbox = () => {
   const [note, setNote] = useState<ClaimedNote | null>(null);
   const [pageState, setPageState] = useState<PageState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [reportOpen, setReportOpen] = useState(false);
 
   const handleSummon = async () => {
     setPageState("loading");
@@ -46,17 +49,21 @@ const Inbox = () => {
     setNote(claimed);
     setPageState("received");
 
-    // Mark as opened in the background
     supabase.rpc("mark_note_opened", { p_note_id: claimed.id });
+  };
+
+  const handleReported = () => {
+    setReportOpen(false);
+    setNote(null);
+    setPageState("empty");
+    toast("Reported. Thanks for keeping GhostNote kind.");
   };
 
   if (pageState === "loading") {
     return (
       <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
         <Ghost className="w-10 h-10 text-primary mb-3 animate-pulse" />
-        <p className="text-sm text-muted-foreground">
-          Listening for footsteps…
-        </p>
+        <p className="text-sm text-muted-foreground">Listening for footsteps…</p>
       </div>
     );
   }
@@ -64,28 +71,36 @@ const Inbox = () => {
   if (pageState === "received" && note) {
     return (
       <div className="animate-fade-in space-y-6">
-        <p className="text-sm font-medium text-muted-foreground">
-          A ghost left you this:
-        </p>
+        <p className="text-sm font-medium text-muted-foreground">A ghost left you this:</p>
 
         <NoteCard content={note.body} tag={note.tag ?? undefined} />
 
-        <p className="text-xs text-muted-foreground text-center">
-          Saved to your journal.
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">Saved to your journal.</p>
+          <button
+            onClick={() => setReportOpen(true)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
+          >
+            <Flag className="w-3 h-3" />
+            Report
+          </button>
+        </div>
 
         <div className="flex gap-3">
           <Button asChild className="flex-1">
             <Link to="/write">Send one back</Link>
           </Button>
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={handleSummon}
-          >
+          <Button variant="outline" className="flex-1" onClick={handleSummon}>
             Summon another
           </Button>
         </div>
+
+        <ReportDialog
+          noteId={note.id}
+          open={reportOpen}
+          onOpenChange={setReportOpen}
+          onReported={handleReported}
+        />
       </div>
     );
   }
@@ -95,17 +110,10 @@ const Inbox = () => {
       <div className="animate-fade-in space-y-6">
         <div>
           <h1 className="text-2xl font-bold mb-1">Inbox</h1>
-          <p className="text-sm text-muted-foreground">
-            Summon a note left by a stranger.
-          </p>
+          <p className="text-sm text-muted-foreground">Summon a note left by a stranger.</p>
         </div>
-
         <EmptyState message="No ghosts right now." />
-
-        <p className="text-sm text-muted-foreground text-center">
-          Write a note to wake the system up.
-        </p>
-
+        <p className="text-sm text-muted-foreground text-center">Write a note to wake the system up.</p>
         <div className="flex gap-3">
           <Button asChild className="flex-1">
             <Link to="/write">Write a note</Link>
@@ -122,21 +130,14 @@ const Inbox = () => {
     <div className="animate-fade-in space-y-6">
       <div>
         <h1 className="text-2xl font-bold mb-1">Inbox</h1>
-        <p className="text-sm text-muted-foreground">
-          Summon a note left by a stranger.
-        </p>
+        <p className="text-sm text-muted-foreground">Summon a note left by a stranger.</p>
       </div>
-
       {pageState === "error" && errorMsg && (
         <p className="text-sm text-destructive">{errorMsg}</p>
       )}
-
       <div className="bg-paper border rounded-lg shadow-paper p-8 flex items-center justify-center min-h-[200px]">
-        <p className="text-muted-foreground text-sm">
-          A note is waiting somewhere out there...
-        </p>
+        <p className="text-muted-foreground text-sm">A note is waiting somewhere out there...</p>
       </div>
-
       <Button onClick={handleSummon} size="lg" className="w-full">
         Summon a note
       </Button>

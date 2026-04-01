@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import NoteCard from "@/components/NoteCard";
 import EmptyState from "@/components/EmptyState";
+import ReportDialog from "@/components/ReportDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface JournalNote {
   id: string;
@@ -15,9 +18,10 @@ interface JournalNote {
 const Journal = () => {
   const [notes, setNotes] = useState<JournalNote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reportNoteId, setReportNoteId] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetch = async () => {
+    const fetchNotes = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -38,8 +42,16 @@ const Journal = () => {
       setLoading(false);
     };
 
-    fetch();
+    fetchNotes();
   }, []);
+
+  const handleReported = () => {
+    if (reportNoteId) {
+      setNotes((prev) => prev.filter((n) => n.id !== reportNoteId));
+    }
+    setReportNoteId(null);
+    toast("Reported. Thanks for keeping GhostNote kind.");
+  };
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -51,9 +63,7 @@ const Journal = () => {
       </div>
 
       {loading ? (
-        <p className="text-sm text-muted-foreground text-center py-12">
-          Loading…
-        </p>
+        <p className="text-sm text-muted-foreground text-center py-12">Loading…</p>
       ) : notes.length === 0 ? (
         <div className="space-y-4">
           <EmptyState message="Your journal is empty." />
@@ -69,14 +79,33 @@ const Journal = () => {
       ) : (
         <div className="space-y-4">
           {notes.map((n) => (
-            <NoteCard
-              key={n.id}
-              content={n.body}
-              tag={n.tag ?? undefined}
-              date={n.delivered_at ?? undefined}
-            />
+            <div key={n.id} className="space-y-1">
+              <NoteCard
+                content={n.body}
+                tag={n.tag ?? undefined}
+                date={n.delivered_at ?? undefined}
+              />
+              <div className="flex justify-end px-1">
+                <button
+                  onClick={() => setReportNoteId(n.id)}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  <Flag className="w-3 h-3" />
+                  Report
+                </button>
+              </div>
+            </div>
           ))}
         </div>
+      )}
+
+      {reportNoteId && (
+        <ReportDialog
+          noteId={reportNoteId}
+          open={true}
+          onOpenChange={(open) => { if (!open) setReportNoteId(null); }}
+          onReported={handleReported}
+        />
       )}
     </div>
   );
