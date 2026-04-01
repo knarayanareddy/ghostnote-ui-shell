@@ -32,8 +32,9 @@ const Inbox = () => {
   const { refreshStats } = useStats();
   const [state, setState] = useState<InboxState>({ status: "idle" });
   const [reportOpen, setReportOpen] = useState(false);
-  // Keep note in memory for "Not now" -> idle cycle
   const stashedNote = useRef<NoteRow | null>(null);
+  // Track stashed note in state so re-renders pick it up
+  const [hasStashed, setHasStashed] = useState(false);
 
   const handleSummon = async () => {
     setState({ status: "claiming" });
