@@ -21,7 +21,7 @@ const Write = () => {
   const [showDrift, setShowDrift] = useState(false);
 
   const trimmed = content.trim();
-  const bannedDetected = trimmed.length > 0 && containsBannedWord(trimmed);
+  const bannedResult = trimmed.length > 0 ? findBannedContent(trimmed) : { hit: false, match: null };
   const canSubmit =
     isKind &&
     trimmed.length >= 15 &&
