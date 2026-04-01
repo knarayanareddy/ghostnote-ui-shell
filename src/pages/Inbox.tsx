@@ -7,6 +7,7 @@ import EmptyState from "@/components/EmptyState";
 import ReportDialog from "@/components/ReportDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useStats } from "@/components/StatsProvider";
 
 interface ClaimedNote {
   id: string;
@@ -18,6 +19,7 @@ interface ClaimedNote {
 type PageState = "idle" | "loading" | "received" | "empty" | "error";
 
 const Inbox = () => {
+  const { refreshStats } = useStats();
   const [note, setNote] = useState<ClaimedNote | null>(null);
   const [pageState, setPageState] = useState<PageState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -50,6 +52,7 @@ const Inbox = () => {
     setPageState("received");
 
     supabase.rpc("mark_note_opened", { p_note_id: claimed.id });
+    refreshStats();
   };
 
   const handleReported = () => {

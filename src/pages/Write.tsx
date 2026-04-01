@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Ghost } from "lucide-react";
 import TagChips from "@/components/TagChips";
 import { supabase } from "@/integrations/supabase/client";
+import { useStats } from "@/components/StatsProvider";
 
 const BANNED_WORDS = [
   "fuck", "shit", "damn", "bitch", "ass", "bastard", "dick", "cunt",
@@ -20,6 +21,7 @@ function containsBannedWord(text: string): boolean {
 type PageState = "form" | "sending" | "success" | "error";
 
 const Write = () => {
+  const { refreshStats } = useStats();
   const [content, setContent] = useState("");
   const [tag, setTag] = useState<string | null>(null);
   const [isKind, setIsKind] = useState(false);
@@ -63,6 +65,7 @@ const Write = () => {
       return;
     }
 
+    refreshStats();
     setPageState("success");
   };
 

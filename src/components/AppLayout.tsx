@@ -2,6 +2,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { Ghost } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ensureAnonymousSession } from "@/lib/supabaseAuth";
+import { StatsProvider, useStats } from "@/components/StatsProvider";
 
 const navItems = [
   { label: "Home", path: "/" },
@@ -10,7 +11,16 @@ const navItems = [
   { label: "Journal", path: "/journal" },
 ];
 
-const AppLayout = () => {
+const HeaderStats = () => {
+  const { stats } = useStats();
+  return (
+    <span className="text-[11px] text-muted-foreground tabular-nums">
+      Sent {stats.sent} · Received {stats.received}
+    </span>
+  );
+};
+
+const AppLayoutInner = () => {
   const location = useLocation();
   const [authStatus, setAuthStatus] = useState<"loading" | "connected" | "error">("loading");
 
@@ -62,9 +72,12 @@ const AppLayout = () => {
               </nav>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Anonymous kindness. No replies. No likes.
-          </p>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-xs text-muted-foreground">
+              Anonymous kindness. No replies. No likes.
+            </p>
+            {authStatus === "connected" && <HeaderStats />}
+          </div>
         </div>
       </header>
 
@@ -76,5 +89,11 @@ const AppLayout = () => {
     </div>
   );
 };
+
+const AppLayout = () => (
+  <StatsProvider>
+    <AppLayoutInner />
+  </StatsProvider>
+);
 
 export default AppLayout;
