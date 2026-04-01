@@ -21,6 +21,7 @@ function containsBannedWord(text: string): boolean {
 type PageState = "form" | "sending" | "success" | "error";
 
 const Write = () => {
+  const { refreshStats } = useStats();
   const [content, setContent] = useState("");
   const [tag, setTag] = useState<string | null>(null);
   const [isKind, setIsKind] = useState(false);
