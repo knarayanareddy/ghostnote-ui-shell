@@ -50,7 +50,7 @@ const Journal = () => {
       setNotes((prev) => prev.filter((n) => n.id !== reportNoteId));
     }
     setReportNoteId(null);
-    toast("Reported. Thanks for keeping GhostNote kind.");
+    toast("Reported. Thanks for keeping Kindling kind.");
   };
 
   return (

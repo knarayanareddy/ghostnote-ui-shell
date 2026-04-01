@@ -91,7 +91,7 @@ const Home = () => {
   return (
     <div className="flex flex-col items-center text-center py-8 sm:py-12 animate-fade-in">
       <Ghost className="w-12 h-12 text-primary mb-4 animate-ghost-float" />
-      <h1 className="text-3xl sm:text-4xl font-bold mb-2">GhostNote</h1>
+      <h1 className="text-3xl sm:text-4xl font-bold mb-2">Kindling</h1>
       <p className="text-muted-foreground mb-2 max-w-sm text-sm sm:text-base">
         Leave a kind note for a stranger. Receive one when you need it.
       </p>

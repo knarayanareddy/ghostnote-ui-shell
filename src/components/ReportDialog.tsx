@@ -47,7 +47,7 @@ const ReportDialog = ({ noteId, open, onOpenChange, onReported }: ReportDialogPr
         <DialogHeader>
           <DialogTitle>Report this note as unkind?</DialogTitle>
           <DialogDescription>
-            This will remove the note and help keep GhostNote safe.
+            This will remove the note and help keep Kindling safe.
           </DialogDescription>
         </DialogHeader>
         <Textarea

@@ -93,7 +93,7 @@ const Write = () => {
         <Ghost className="w-10 h-10 text-primary mb-4 animate-ghost-float" />
         <h1 className="text-2xl font-bold mb-2">Sent.</h1>
         <p className="text-muted-foreground max-w-sm mb-2 text-sm">
-          Your note is drifting. Someone may receive it the next time they open GhostNote.
+          Your note is drifting. Someone may receive it the next time they open Kindling.
         </p>
         <p className="text-xs text-muted-foreground/60 mb-8">
           You won't know who. That's the point.
