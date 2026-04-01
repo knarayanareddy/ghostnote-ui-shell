@@ -19,6 +19,7 @@ interface ClaimedNote {
 type PageState = "idle" | "loading" | "received" | "empty" | "error";
 
 const Inbox = () => {
+  const { refreshStats } = useStats();
   const [note, setNote] = useState<ClaimedNote | null>(null);
   const [pageState, setPageState] = useState<PageState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
