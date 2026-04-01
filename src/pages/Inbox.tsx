@@ -256,7 +256,7 @@ const Inbox = () => {
             </Button>
             {idleWithStash ? (
               <Button variant="outline" className="flex-1" size="lg" onClick={handleDiscard}>
-                Discard
+                Put away
               </Button>
             ) : (
               <Button variant="outline" className="flex-1" size="lg" onClick={handleNotNow}>
@@ -275,6 +275,12 @@ const Inbox = () => {
           </Button>
         )}
       </div>
+
+      {isSealed && (
+        <p className="text-xs text-muted-foreground/60 text-center">
+          It'll still be saved in your journal.
+        </p>
+      )}
     </div>
   );
 };
