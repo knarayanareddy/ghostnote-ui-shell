@@ -63,8 +63,11 @@ const Inbox = () => {
   };
 
   const handleOpen = () => {
-    if (state.status !== "sealed") return;
-    setState({ status: "opening", note: state.note });
+    if (state.status === "sealed") {
+      setState({ status: "opening", note: state.note });
+    } else if (state.status === "idle" && stashedNote.current) {
+      setState({ status: "opening", note: stashedNote.current });
+    }
   };
 
   const handleOpenComplete = useCallback(() => {
