@@ -7,16 +7,7 @@ import { Ghost } from "lucide-react";
 import TagChips from "@/components/TagChips";
 import { supabase } from "@/integrations/supabase/client";
 import { useStats } from "@/components/StatsProvider";
-
-const BANNED_WORDS = [
-  "fuck", "shit", "damn", "bitch", "ass", "bastard", "dick", "cunt",
-  "nigger", "nigga", "faggot", "retard", "kys", "kill yourself",
-];
-
-function containsBannedWord(text: string): boolean {
-  const lower = text.toLowerCase();
-  return BANNED_WORDS.some((w) => lower.includes(w));
-}
+import { findBannedContent } from "@/lib/bannedFilter";
 
 type PageState = "form" | "sending" | "success" | "error";
 
@@ -30,12 +21,12 @@ const Write = () => {
   const [showDrift, setShowDrift] = useState(false);
 
   const trimmed = content.trim();
-  const bannedDetected = trimmed.length > 0 && containsBannedWord(trimmed);
+  const bannedResult = trimmed.length > 0 ? findBannedContent(trimmed) : { hit: false, match: null };
   const canSubmit =
     isKind &&
     trimmed.length >= 15 &&
     trimmed.length <= 500 &&
-    !bannedDetected &&
+    !bannedResult.hit &&
     pageState === "form";
 
   const handleSubmit = async () => {
@@ -147,9 +138,9 @@ const Write = () => {
         </div>
       </div>
 
-      {bannedDetected && (
+      {bannedResult.hit && (
         <p className="text-sm font-medium text-destructive animate-fade-in">
-          Keep it kind.
+          Keep it kind.{bannedResult.match ? ` Please remove: "${bannedResult.match}"` : ""}
         </p>
       )}
 
