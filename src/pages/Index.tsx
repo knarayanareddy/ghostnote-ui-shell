@@ -1,6 +1,91 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Ghost } from "lucide-react";
+import { Ghost, ChevronDown, ChevronUp, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+const SHOW_DEMO_TIPS = true;
+
+const SAMPLE_NOTES = [
+  { body: "You're doing better than you think. Keep going, stranger.", tag: "Encouragement" },
+  { body: "Thank you for existing. The world is a little brighter because you're in it.", tag: "Gratitude" },
+  { body: "Hey — I'm proud of you for getting through today. That counts for something.", tag: "Proud of you" },
+];
+
+const DemoPanel = () => {
+  const [open, setOpen] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+
+  const handleSeed = async () => {
+    setSeeding(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Not signed in.");
+      setSeeding(false);
+      return;
+    }
+
+    const rows = SAMPLE_NOTES.map((n) => ({
+      author_id: user.id,
+      body: n.body,
+      tag: n.tag,
+    }));
+
+    const { error } = await supabase.from("notes").insert(rows);
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("3 sample notes seeded.");
+    }
+    setSeeding(false);
+  };
+
+  return (
+    <div className="w-full max-w-md mt-8 border border-dashed border-border rounded-lg overflow-hidden animate-fade-in">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-accent/50 transition-colors"
+      >
+        <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <FlaskConical className="w-3.5 h-3.5" />
+          Demo Tips
+        </span>
+        {open ? (
+          <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+        )}
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-3 text-left animate-fade-in">
+          <ol className="text-xs text-muted-foreground space-y-2 list-decimal list-inside">
+            <li>Open two windows (one incognito) to simulate two anonymous users.</li>
+            <li>In Window A: go to <span className="font-medium text-foreground">/write</span> and send 2–3 notes.</li>
+            <li>In Window B: go to <span className="font-medium text-foreground">/inbox</span> and click "Summon a note".</li>
+            <li>Check <span className="font-medium text-foreground">/journal</span> in Window B to see it saved.</li>
+          </ol>
+
+          <div className="pt-2 border-t border-border/50">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSeed}
+              disabled={seeding}
+              className="w-full text-xs"
+            >
+              {seeding ? "Seeding…" : "Seed 3 sample notes (current user)"}
+            </Button>
+            <p className="text-[10px] text-muted-foreground/50 mt-1.5 text-center">
+              Inserts 3 queued notes authored by you — claim them from another session.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Home = () => {
   return (
@@ -45,6 +130,8 @@ const Home = () => {
           </div>
         ))}
       </div>
+
+      {SHOW_DEMO_TIPS && <DemoPanel />}
     </div>
   );
 };
