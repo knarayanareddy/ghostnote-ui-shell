@@ -138,9 +138,9 @@ const Write = () => {
         </div>
       </div>
 
-      {bannedDetected && (
+      {bannedResult.hit && (
         <p className="text-sm font-medium text-destructive animate-fade-in">
-          Keep it kind.
+          Keep it kind.{bannedResult.match ? ` Please remove: "${bannedResult.match}"` : ""}
         </p>
       )}
 
