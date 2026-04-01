@@ -58,16 +58,21 @@ const Journal = () => {
       <div>
         <h1 className="text-2xl font-bold mb-1">Ghost Journal</h1>
         <p className="text-sm text-muted-foreground">
-          A private shelf of kindness you've received.
+          A private shelf of kindness you've received. Only you can see these.
         </p>
       </div>
 
       {loading ? (
-        <p className="text-sm text-muted-foreground text-center py-12">Loading…</p>
+        <div className="flex flex-col items-center py-16">
+          <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground mt-3">Loading…</p>
+        </div>
       ) : notes.length === 0 ? (
-        <div className="space-y-4">
-          <EmptyState message="Your journal is empty." />
-          <div className="flex gap-3 justify-center">
+        <EmptyState
+          message="Your journal is empty."
+          submessage="Summon a note to start your collection."
+        >
+          <div className="flex flex-col sm:flex-row gap-3">
             <Button asChild>
               <Link to="/inbox">Check inbox</Link>
             </Button>
@@ -75,11 +80,15 @@ const Journal = () => {
               <Link to="/write">Write a note</Link>
             </Button>
           </div>
-        </div>
+        </EmptyState>
       ) : (
         <div className="space-y-4">
-          {notes.map((n) => (
-            <div key={n.id} className="space-y-1">
+          {notes.map((n, i) => (
+            <div
+              key={n.id}
+              className="space-y-1 animate-slide-up"
+              style={{ animationDelay: `${i * 80}ms` }}
+            >
               <NoteCard
                 content={n.body}
                 tag={n.tag ?? undefined}
@@ -88,7 +97,7 @@ const Journal = () => {
               <div className="flex justify-end px-1">
                 <button
                   onClick={() => setReportNoteId(n.id)}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground/40 hover:text-destructive transition-colors"
                 >
                   <Flag className="w-3 h-3" />
                   Report
