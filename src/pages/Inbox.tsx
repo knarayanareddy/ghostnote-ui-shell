@@ -256,7 +256,7 @@ const Inbox = () => {
             </Button>
             {idleWithStash ? (
               <Button variant="outline" className="flex-1" size="lg" onClick={handleDiscard}>
-                Discard
+                Put away
               </Button>
             ) : (
               <Button variant="outline" className="flex-1" size="lg" onClick={handleNotNow}>
