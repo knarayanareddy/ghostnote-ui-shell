@@ -69,7 +69,7 @@ const Inbox = () => {
     setState((prev) => {
       if (prev.status !== "opening") return prev;
       // Mark opened in background
-      supabase.rpc("mark_note_opened", { p_note_id: prev.note.id }).catch(() => {});
+      supabase.rpc("mark_note_opened", { p_note_id: prev.note.id }).then(() => {});
       return { status: "revealed", note: prev.note };
     });
   }, []);
