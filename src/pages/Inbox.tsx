@@ -190,16 +190,18 @@ const Inbox = () => {
   }
 
   // ── Idle / Claiming / Sealed / Opening ──
+  const idleWithStash = state.status === "idle" && hasStashed && stashedNote.current !== null;
+
   const envelopeState =
     state.status === "claiming"
       ? "claiming"
-      : state.status === "sealed"
+      : state.status === "sealed" || idleWithStash
       ? "sealed"
       : state.status === "opening"
       ? "opening"
       : "idle";
 
-  const isSealed = state.status === "sealed";
+  const isSealed = state.status === "sealed" || idleWithStash;
   const isClaiming = state.status === "claiming";
   const isOpening = state.status === "opening";
 
@@ -229,7 +231,12 @@ const Inbox = () => {
             <p className="text-xs text-muted-foreground mt-0.5">Summon it when you're ready.</p>
           </div>
         )}
-        {isSealed && (
+        {isSealed && idleWithStash && (
+          <div className="animate-fade-in">
+            <p className="text-sm font-medium text-foreground">You have a sealed note waiting.</p>
+          </div>
+        )}
+        {isSealed && !idleWithStash && (
           <div className="animate-fade-in">
             <p className="text-sm font-medium text-foreground">A ghost delivered something.</p>
           </div>
@@ -247,9 +254,15 @@ const Inbox = () => {
             <Button className="flex-1" size="lg" onClick={handleOpen}>
               Open
             </Button>
-            <Button variant="outline" className="flex-1" size="lg" onClick={handleNotNow}>
-              Not now
-            </Button>
+            {idleWithStash ? (
+              <Button variant="outline" className="flex-1" size="lg" onClick={handleDiscard}>
+                Discard
+              </Button>
+            ) : (
+              <Button variant="outline" className="flex-1" size="lg" onClick={handleNotNow}>
+                Not now
+              </Button>
+            )}
           </>
         ) : (
           <Button
