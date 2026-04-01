@@ -1,3 +1,6 @@
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { formatDistanceToNow, format } from "date-fns";
+
 interface NoteCardProps {
   content: string;
   tag?: string;
@@ -5,6 +8,9 @@ interface NoteCardProps {
 }
 
 const NoteCard = ({ content, tag, date }: NoteCardProps) => {
+  const relative = date ? formatDistanceToNow(new Date(date), { addSuffix: true }) : null;
+  const exact = date ? format(new Date(date), "MMM d, yyyy 'at' h:mm a") : null;
+
   return (
     <div className="bg-paper border rounded-lg shadow-paper p-5 transition-shadow hover:shadow-paper-hover animate-fade-in">
       <p className="text-foreground font-serif leading-relaxed">{content}</p>
@@ -14,8 +20,17 @@ const NoteCard = ({ content, tag, date }: NoteCardProps) => {
             {tag}
           </span>
         )}
-        {date && (
-          <span className="text-xs text-muted-foreground ml-auto">{date}</span>
+        {relative && exact && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-xs text-muted-foreground ml-auto cursor-default">
+                {relative}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p className="text-xs">{exact}</p>
+            </TooltipContent>
+          </Tooltip>
         )}
       </div>
     </div>
