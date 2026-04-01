@@ -26,7 +26,7 @@ const Write = () => {
     isKind &&
     trimmed.length >= 15 &&
     trimmed.length <= 500 &&
-    !bannedDetected &&
+    !bannedResult.hit &&
     pageState === "form";
 
   const handleSubmit = async () => {
