@@ -101,7 +101,7 @@ const Inbox = () => {
     stashedNote.current = null;
     setHasStashed(false);
     setState({ status: "empty" });
-    toast("Reported. Thanks for keeping GhostNote kind.");
+    toast("Reported. Thanks for keeping Kindling kind.");
   };
 
   // ── Revealed ──

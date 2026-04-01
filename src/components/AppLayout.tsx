@@ -37,7 +37,7 @@ const AppLayoutInner = () => {
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center gap-2 group">
               <Ghost className="w-5 h-5 text-primary transition-transform group-hover:scale-110" />
-              <span className="font-serif font-bold text-lg text-foreground">GhostNote</span>
+              <span className="font-serif font-bold text-lg text-foreground">Kindling</span>
             </Link>
             <nav className="flex items-center gap-0.5 sm:gap-1">
               {navItems.map((item) => (
