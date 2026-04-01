@@ -65,6 +65,7 @@ const Write = () => {
       return;
     }
 
+    refreshStats();
     setPageState("success");
   };
 

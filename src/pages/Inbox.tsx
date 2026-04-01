@@ -52,6 +52,7 @@ const Inbox = () => {
     setPageState("received");
 
     supabase.rpc("mark_note_opened", { p_note_id: claimed.id });
+    refreshStats();
   };
 
   const handleReported = () => {
