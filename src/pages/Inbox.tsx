@@ -57,6 +57,7 @@ const Inbox = () => {
 
     const claimed = rows[0];
     stashedNote.current = claimed;
+    setHasStashed(true);
     refreshStats();
     setState({ status: "sealed", note: claimed });
   };
