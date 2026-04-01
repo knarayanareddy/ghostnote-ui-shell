@@ -25,11 +25,18 @@ const ReportDialog = ({ noteId, open, onOpenChange, onReported }: ReportDialogPr
 
   const handleReport = async () => {
     setSubmitting(true);
-    await supabase.rpc("report_note", {
+    const { error } = await supabase.rpc("report_note", {
       p_note_id: noteId,
       p_reason: reason.trim() || null,
     });
     setSubmitting(false);
+
+    if (error) {
+      console.error("report_note RPC failed:", error);
+      toast.error("Couldn't report this note. Please try again.");
+      return;
+    }
+
     setReason("");
     onReported();
   };
