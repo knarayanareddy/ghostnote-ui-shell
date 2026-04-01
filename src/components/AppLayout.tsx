@@ -1,5 +1,7 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { Ghost } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ensureAnonymousSession } from "@/lib/supabaseAuth";
 
 const navItems = [
   { label: "Home", path: "/" },
@@ -10,6 +12,13 @@ const navItems = [
 
 const AppLayout = () => {
   const location = useLocation();
+  const [authStatus, setAuthStatus] = useState<"loading" | "connected" | "error">("loading");
+
+  useEffect(() => {
+    ensureAnonymousSession()
+      .then(() => setAuthStatus("connected"))
+      .catch(() => setAuthStatus("error"));
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -20,21 +29,38 @@ const AppLayout = () => {
               <Ghost className="w-5 h-5 text-primary" />
               <span className="font-serif font-bold text-lg text-foreground">GhostNote</span>
             </Link>
-            <nav className="flex items-center gap-1">
-              {navItems.map((item) => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                    location.pathname === item.path
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
+            <div className="flex items-center gap-3">
+              <span
+                className={`text-[11px] font-medium ${
+                  authStatus === "connected"
+                    ? "text-green-600"
+                    : authStatus === "error"
+                    ? "text-destructive"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {authStatus === "connected"
+                  ? "Connected"
+                  : authStatus === "error"
+                  ? "Connection failed"
+                  : "Connecting\u2026"}
+              </span>
+              <nav className="flex items-center gap-1">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      location.pathname === item.path
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+            </div>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             Anonymous kindness. No replies. No likes.
