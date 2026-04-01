@@ -1,91 +1,115 @@
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Ghost, Flag } from "lucide-react";
+import { Flag } from "lucide-react";
 import NoteCard from "@/components/NoteCard";
 import EmptyState from "@/components/EmptyState";
+import Envelope from "@/components/Envelope";
 import ReportDialog from "@/components/ReportDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useStats } from "@/components/StatsProvider";
 
-interface ClaimedNote {
+interface NoteRow {
   id: string;
   body: string;
   tag: string | null;
   delivered_at: string | null;
+  opened_at: string | null;
+  status: string;
 }
 
-type PageState = "idle" | "loading" | "received" | "empty" | "error";
+type InboxState =
+  | { status: "idle" }
+  | { status: "claiming" }
+  | { status: "sealed"; note: NoteRow }
+  | { status: "opening"; note: NoteRow }
+  | { status: "revealed"; note: NoteRow }
+  | { status: "empty" }
+  | { status: "error"; message: string };
 
 const Inbox = () => {
   const { refreshStats } = useStats();
-  const [note, setNote] = useState<ClaimedNote | null>(null);
-  const [pageState, setPageState] = useState<PageState>("idle");
-  const [errorMsg, setErrorMsg] = useState("");
+  const [state, setState] = useState<InboxState>({ status: "idle" });
   const [reportOpen, setReportOpen] = useState(false);
+  // Keep note in memory for "Not now" -> idle cycle
+  const stashedNote = useRef<NoteRow | null>(null);
 
   const handleSummon = async () => {
-    setPageState("loading");
-    setErrorMsg("");
+    setState({ status: "claiming" });
 
     const { data, error } = await supabase.rpc("claim_ghost_note", {
       p_tag: null,
     });
 
     if (error) {
-      setErrorMsg(error.message);
-      setPageState("error");
+      setState({ status: "error", message: error.message });
       return;
     }
 
-    const rows = data as unknown as ClaimedNote[];
+    const rows = data as unknown as NoteRow[];
 
     if (!rows || rows.length === 0) {
-      setNote(null);
-      setPageState("empty");
+      setState({ status: "empty" });
       return;
     }
 
     const claimed = rows[0];
-    setNote(claimed);
-    setPageState("received");
-
-    supabase.rpc("mark_note_opened", { p_note_id: claimed.id });
+    stashedNote.current = claimed;
     refreshStats();
+    setState({ status: "sealed", note: claimed });
+  };
+
+  const handleOpen = () => {
+    if (state.status !== "sealed") return;
+    setState({ status: "opening", note: state.note });
+  };
+
+  const handleOpenComplete = useCallback(() => {
+    setState((prev) => {
+      if (prev.status !== "opening") return prev;
+      // Mark opened in background
+      supabase.rpc("mark_note_opened", { p_note_id: prev.note.id }).catch(() => {});
+      return { status: "revealed", note: prev.note };
+    });
+  }, []);
+
+  const handleNotNow = () => {
+    // Return to idle but keep note stashed (it's already claimed)
+    setState({ status: "idle" });
+  };
+
+  const handleSummonAnother = () => {
+    stashedNote.current = null;
+    setState({ status: "idle" });
   };
 
   const handleReported = () => {
     setReportOpen(false);
-    setNote(null);
-    setPageState("empty");
+    stashedNote.current = null;
+    setState({ status: "empty" });
     toast("Reported. Thanks for keeping GhostNote kind.");
   };
 
-  if (pageState === "loading") {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
-        <Ghost className="w-12 h-12 text-primary mb-4 animate-ghost-float" />
-        <p className="text-sm text-muted-foreground">Listening for footsteps…</p>
-        <p className="text-xs text-muted-foreground/50 mt-1">A ghost may be near.</p>
-      </div>
-    );
-  }
-
-  if (pageState === "received" && note) {
+  // ── Revealed ──
+  if (state.status === "revealed") {
     return (
       <div className="space-y-5 animate-fade-in">
         <p className="text-sm font-medium text-muted-foreground text-center">
           A ghost left you this:
         </p>
 
-        <NoteCard content={note.body} tag={note.tag ?? undefined} animate="drift-in" />
+        <NoteCard
+          content={state.note.body}
+          tag={state.note.tag ?? undefined}
+          animate="drift-in"
+        />
 
         <div className="flex items-center justify-between px-1">
           <p className="text-xs text-muted-foreground">Saved to your journal.</p>
           <button
             onClick={() => setReportOpen(true)}
-            className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-destructive transition-colors"
+            className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-destructive transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
           >
             <Flag className="w-3 h-3" />
             Report
@@ -96,13 +120,13 @@ const Inbox = () => {
           <Button asChild className="flex-1">
             <Link to="/write">Send one back</Link>
           </Button>
-          <Button variant="outline" className="flex-1" onClick={handleSummon}>
+          <Button variant="outline" className="flex-1" onClick={handleSummonAnother}>
             Summon another
           </Button>
         </div>
 
         <ReportDialog
-          noteId={note.id}
+          noteId={state.note.id}
           open={reportOpen}
           onOpenChange={setReportOpen}
           onReported={handleReported}
@@ -111,13 +135,14 @@ const Inbox = () => {
     );
   }
 
-  if (pageState === "empty") {
+  // ── Empty ──
+  if (state.status === "empty") {
     return (
       <div className="animate-fade-in space-y-4">
-        <div>
+        <div className="text-center">
           <h1 className="text-2xl font-bold mb-1">Inbox</h1>
           <p className="text-sm text-muted-foreground">
-            Summon a note left by a stranger. No sender info. No way to reply.
+            No sender info. No way to reply. Just kindness.
           </p>
         </div>
 
@@ -138,35 +163,92 @@ const Inbox = () => {
     );
   }
 
+  // ── Error ──
+  if (state.status === "error") {
+    return (
+      <div className="animate-fade-in space-y-4 text-center">
+        <h1 className="text-2xl font-bold mb-1">Inbox</h1>
+        <p className="text-sm text-destructive">{state.message}</p>
+        <Button variant="outline" onClick={handleSummon}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
+  // ── Idle / Claiming / Sealed / Opening ──
+  const envelopeState =
+    state.status === "claiming"
+      ? "claiming"
+      : state.status === "sealed"
+      ? "sealed"
+      : state.status === "opening"
+      ? "opening"
+      : "idle";
+
+  const isSealed = state.status === "sealed";
+  const isClaiming = state.status === "claiming";
+  const isOpening = state.status === "opening";
+
   return (
     <div className="animate-fade-in space-y-6">
-      <div>
+      <div className="text-center">
         <h1 className="text-2xl font-bold mb-1">Inbox</h1>
         <p className="text-sm text-muted-foreground">
-          Summon a note left by a stranger. No sender info. No way to reply.
+          No sender info. No way to reply. Just kindness.
         </p>
       </div>
 
-      {pageState === "error" && errorMsg && (
-        <p className="text-sm text-destructive animate-fade-in">{errorMsg}</p>
-      )}
-
-      <div
-        className="border rounded-xl p-8 sm:p-10 flex flex-col items-center justify-center min-h-[200px]"
-        style={{
-          background: "linear-gradient(145deg, hsl(40 40% 97%), hsl(36 35% 94%))",
-          boxShadow: "0 2px 8px -2px hsl(32 30% 75% / 0.3)",
-        }}
-      >
-        <Ghost className="w-8 h-8 text-muted-foreground/20 mb-3 animate-ghost-float" />
-        <p className="text-muted-foreground text-sm text-center">
-          A note is waiting somewhere out there...
-        </p>
+      <div className="py-4">
+        <Envelope state={envelopeState} onOpenComplete={handleOpenComplete} />
       </div>
 
-      <Button onClick={handleSummon} size="lg" className="w-full">
-        Summon a note
-      </Button>
+      <div className="text-center space-y-1">
+        {isClaiming && (
+          <div className="animate-fade-in">
+            <p className="text-sm text-muted-foreground">Listening for footsteps…</p>
+            <p className="text-xs text-muted-foreground/50 mt-0.5">A ghost may be near.</p>
+          </div>
+        )}
+        {!isClaiming && !isSealed && !isOpening && (
+          <div className="animate-fade-in">
+            <p className="text-sm font-medium text-foreground">A note is nearby.</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Summon it when you're ready.</p>
+          </div>
+        )}
+        {isSealed && (
+          <div className="animate-fade-in">
+            <p className="text-sm font-medium text-foreground">A ghost delivered something.</p>
+          </div>
+        )}
+        {isOpening && (
+          <div className="animate-fade-in">
+            <p className="text-sm text-muted-foreground">Opening…</p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        {isSealed ? (
+          <>
+            <Button className="flex-1" size="lg" onClick={handleOpen}>
+              Open
+            </Button>
+            <Button variant="outline" className="flex-1" size="lg" onClick={handleNotNow}>
+              Not now
+            </Button>
+          </>
+        ) : (
+          <Button
+            className="flex-1"
+            size="lg"
+            onClick={handleSummon}
+            disabled={isClaiming || isOpening}
+          >
+            {isClaiming ? "Summoning…" : "Summon a note"}
+          </Button>
+        )}
+      </div>
     </div>
   );
 };
