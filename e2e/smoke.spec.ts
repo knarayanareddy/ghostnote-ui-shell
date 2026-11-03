@@ -34,3 +34,32 @@ test.describe("Kindling smoke", () => {
     await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
   });
 });
+
+test.describe("writing a note", () => {
+  test("sends a kind note and confirms it drifted away", async ({ page }) => {
+    await page.goto("/write");
+
+    await page.getByLabel("Your note").fill(
+      "Whatever you are carrying today, you are carrying it well.",
+    );
+    await page.getByRole("checkbox", { name: /This is kind/i }).check();
+
+    const send = page.getByRole("button", { name: "Send into the void" });
+    await expect(send).toBeEnabled();
+    await send.click();
+
+    // 1.2s drift animation, then the success screen.
+    await expect(page.getByRole("heading", { name: "Sent." })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("You won't know who. That's the point.")).toBeVisible();
+  });
+
+  test("rejects unkind wording before it is sent", async ({ page }) => {
+    await page.goto("/write");
+
+    await page.getByLabel("Your note").fill("you are a total b4stard and I mean it");
+    await page.getByRole("checkbox", { name: /This is kind/i }).check();
+
+    await expect(page.getByRole("alert")).toContainText("Keep it kind");
+    await expect(page.getByRole("button", { name: "Send into the void" })).toBeDisabled();
+  });
+});

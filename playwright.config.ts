@@ -1,13 +1,21 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Browser smoke tests. They run against the real dev server, which talks to
- * whatever Supabase project your .env points at, so they create anonymous
- * sessions and real notes — point them at a scratch project.
+ * Browser smoke tests.
  *
- *   npx playwright install chromium
- *   npm run e2e
+ * By default they are **hermetic**: Playwright boots a mock Supabase
+ * (e2e/mock-supabase.mjs) plus the Vite dev server in `e2e` mode (.env.e2e),
+ * so no real project, credentials or network access are needed and no real
+ * notes are created.
+ *
+ * To run against a deployed instance instead:
+ *   E2E_BASE_URL=https://your-app npm run e2e
+ *
+ * First run needs a browser: `npx playwright install chromium`.
  */
+const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:8080";
+const hermetic = !process.env.E2E_BASE_URL;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
@@ -16,16 +24,24 @@ export default defineConfig({
   workers: 1,
   reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:8080",
+    baseURL,
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: process.env.E2E_BASE_URL
-    ? undefined
-    : {
-        command: "npm run dev",
-        url: "http://localhost:8080",
-        reuseExistingServer: !process.env.CI,
-        timeout: 120_000,
-      },
+  webServer: hermetic
+    ? [
+        {
+          command: "node e2e/mock-supabase.mjs",
+          url: "http://127.0.0.1:54399/__mock/reset",
+          reuseExistingServer: !process.env.CI,
+          timeout: 30_000,
+        },
+        {
+          command: "npm run dev:e2e",
+          url: "http://localhost:8080",
+          reuseExistingServer: !process.env.CI,
+          timeout: 120_000,
+        },
+      ]
+    : undefined,
 });

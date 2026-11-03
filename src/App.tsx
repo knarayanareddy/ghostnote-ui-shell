@@ -1,11 +1,12 @@
 import { lazy, Suspense } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AppLayout from "@/components/AppLayout";
 import { AuthProvider } from "@/components/AuthProvider";
 import PageLoader from "@/components/PageLoader";
+import { queryClient } from "@/lib/queryClient";
 
 // Routes are split so the landing page does not ship the write/inbox/journal
 // bundles (and vice versa).
@@ -14,16 +15,6 @@ const Write = lazy(() => import("./pages/Write.tsx"));
 const Inbox = lazy(() => import("./pages/Inbox.tsx"));
 const Journal = lazy(() => import("./pages/Journal.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

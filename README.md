@@ -18,7 +18,7 @@ No profiles. No replies. No likes. Just kindness, drifting.
 | Routing  | react-router-dom (routes are lazy-loaded)                          |
 | Data     | Supabase (Postgres + RLS + RPC), `@tanstack/react-query`           |
 | Identity | Supabase **anonymous** sign-in — no accounts, one session per browser |
-| Tests    | Vitest + Testing Library, Playwright (smoke), pgTAP (RLS/RPCs)     |
+| Tests    | Vitest + Testing Library (unit + app integration, jsdom), Playwright (browser smoke, hermetic via a mock Supabase), pgTAP (RLS/RPCs) |
 
 ## Prerequisites
 
@@ -65,7 +65,8 @@ Both are validated at boot in [`src/lib/env.ts`](src/lib/env.ts), so a missing o
 | `npm run typecheck` | TypeScript project build, no emit                       |
 | `npm test`          | Vitest unit tests                                       |
 | `npm run test:watch`| Vitest in watch mode                                    |
-| `npm run e2e`       | Playwright smoke tests (needs `npx playwright install`)  |
+| `npm run dev:e2e`   | Dev server pointed at the mock Supabase (`.env.e2e`)     |
+| `npm run e2e`       | Playwright smoke tests — hermetic, no project needed     |
 | `npm run db:push`   | Apply `supabase/migrations` to the linked project        |
 | `npm run db:types`  | Regenerate `src/integrations/supabase/types.ts`          |
 | `npm run db:test`   | pgTAP suite in `supabase/tests`                          |
@@ -120,15 +121,19 @@ the content filter and rate limits to 10 notes per hour per author.
 - **Content filtering has two layers.** `src/lib/bannedFilter.ts` gives instant
   client feedback; `public.find_banned_content` is the authoritative check in
   the insert trigger. It handles leet digits (`sh1t`), punctuation substitution
-  (`f*ck`, `f.u.c.k`) and punctuation-joined phrases (`kill-yourself`).
+  (`f*ck`, `f.u.c.k`), vowel-dropped forms (`fck`), punctuation-joined phrases
+  (`kill-yourself`) and letter-spaced text (`f u c k`, `k i l l y o u r s e l f`).
+  Both layers are covered by tests (`src/lib/bannedFilter.test.ts`,
+  `supabase/tests/rls.test.sql`) and must stay in sync.
 - **Moderation** has a read path: `public.moderation_queue` (service role only) —
   see [docs/MODERATION.md](docs/MODERATION.md).
 
 ### Known limitations
 
-- The content filter is heuristic; fully letter-spaced text (`f u c k`) and
-  novel spellings slip through. Move to an Edge Function + real classifier when
-  volume justifies it.
+- The content filter is heuristic. It now catches letter-spaced text, but novel
+  spellings and obfuscations that share no letters with the banned word still
+  slip through. Move to an Edge Function + real classifier when volume justifies
+  it.
 - Rate limits are per author per hour (10) and per reporter per day (20), not
   per IP.
 - Anonymous sessions are per browser: clearing storage means a new identity and
@@ -137,13 +142,31 @@ the content filter and rate limits to 10 notes per hour per author.
 ## Testing
 
 ```bash
-npm test          # unit: banned filter (client rules mirrored in SQL)
-npm run db:test   # pgTAP: RLS, anonymous reads, forged inserts, report abuse
-npm run e2e       # Playwright smoke tests against a running dev server
+npm test          # 46 tests: filter rules, Inbox state machine, full-app jsdom flows
+npm run db:test   # pgTAP (21 assertions): RLS, anonymity, forged inserts, report abuse
+npm run e2e       # Playwright browser smoke tests (hermetic)
 ```
 
-The Playwright suite creates real anonymous sessions and notes, so point it at a
-scratch project (`E2E_BASE_URL` to test an already-running server).
+**Playwright is hermetic by default.** `npm run e2e` starts
+`e2e/mock-supabase.mjs` (a small GoTrue/PostgREST stand-in on :54399) plus the
+dev server in `e2e` mode (`.env.e2e`), so browser tests need no Supabase
+project, no credentials, no network, and never create real notes. First run
+still needs a browser: `npx playwright install chromium`.
+
+To exercise a deployed instance instead:
+`E2E_BASE_URL=https://your-app npm run e2e`.
+
+The jsdom suite (`src/App.test.tsx`) mirrors the Playwright assertions one for
+one, so CI catches selector drift even on machines without a browser.
+
+### Database tests
+
+`supabase test db` needs Docker. The suite is a plain SQL file, so it can also
+be run against any Postgres that has pgTAP installed:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls.test.sql
+```
 
 ## Deployment
 
@@ -153,6 +176,15 @@ scratch project (`E2E_BASE_URL` to test an already-running server).
 3. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in your host.
 4. `npm run build` → deploy `dist/`. The app is a static SPA, so configure a
    rewrite of all paths to `index.html`.
+
+### `supabase/config.toml` and CLI versions
+
+The local config targets Supabase CLI v2.30+/v3 (`[auth] enable_anonymous_sign_ins`).
+CLI 1.x used a different key (`[auth.anonymous] enabled`), and unknown keys are
+ignored silently — so on an old CLI anonymous sign-ins stay off and the app
+cannot start a session. If local dev fails with "Anonymous sign-ins are
+disabled", run `supabase init --force` in a scratch directory and diff the keys
+with `supabase/config.toml`.
 
 ## Contributing
 
