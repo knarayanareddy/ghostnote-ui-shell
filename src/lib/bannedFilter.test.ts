@@ -1,0 +1,86 @@
+import { describe, expect, it } from "vitest";
+import {
+  condenseForFilter,
+  findBannedContent,
+  normalizeForFilter,
+  stripVowels,
+} from "@/lib/bannedFilter";
+
+// These cases must stay in sync with public.find_banned_content() in
+// supabase/migrations/20261103090000_security_hardening.sql.
+describe("findBannedContent", () => {
+  describe("innocent text", () => {
+    it.each([
+      "class is great",
+      "pass the ball",
+      "compass reading",
+      "grassy field",
+      "have a nice day",
+      "the whole class passed the compass test",
+      "I passed my exam, so proud of you",
+      "assist me with the passage",
+      "grab a coffee and breathe",
+      "hmm, psst, look at the class",
+    ])("does not flag %j", (text) => {
+      expect(findBannedContent(text).hit).toBe(false);
+    });
+  });
+
+  describe("plain hits", () => {
+    it("flags a standalone slur", () => {
+      const result = findBannedContent("you are an ass");
+      expect(result).toMatchObject({ hit: true, match: "ass", type: "word" });
+    });
+
+    it("flags a phrase", () => {
+      expect(findBannedContent("please kys")).toMatchObject({
+        hit: true,
+        match: "kys",
+        type: "phrase",
+      });
+    });
+  });
+
+  describe("evasions", () => {
+    it.each([
+      ["f*ck you", "fuck"],
+      ["what the f.u.c.k", "fuck"],
+      ["fck", "fuck"],
+      ["sh1t happens", "shit"],
+      ["you b4stard", "bastard"],
+      ["@ss", "ass"],
+      ["kill-yourself", "kill yourself"],
+      ["kill   yourself", "kill yourself"],
+    ])("flags %j as %j", (input, expected) => {
+      expect(findBannedContent(input)).toMatchObject({ hit: true, match: expected });
+    });
+
+    it("documents the known limitation: fully letter-spaced text", () => {
+      // Not detected by design — see the migration header. If this ever starts
+      // failing, the filter got stronger and the docs should be updated.
+      expect(findBannedContent("f u c k this").hit).toBe(false);
+    });
+  });
+
+  it("returns a canonical match rather than the evasive spelling", () => {
+    expect(findBannedContent("what the f*ck").match).toBe("fuck");
+  });
+
+  it("handles empty input", () => {
+    expect(findBannedContent("")).toEqual({ hit: false, match: null, type: null });
+  });
+});
+
+describe("filter primitives", () => {
+  it("normalises punctuation to single spaces", () => {
+    expect(normalizeForFilter("  Hello,   WORLD!!  ")).toBe("hello world");
+  });
+
+  it("condenses punctuation away", () => {
+    expect(condenseForFilter("f*ck this")).toBe("fck this");
+  });
+
+  it("strips vowels and collapses whitespace", () => {
+    expect(stripVowels("f u c k  this")).toBe("f c k ths");
+  });
+});
