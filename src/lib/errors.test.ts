@@ -48,3 +48,23 @@ describe("describeError", () => {
     });
   });
 });
+
+describe("describeError — write-path messages", () => {
+  it("explains blocked wording without repeating the word", () => {
+    const help = describeError("note contains blocked content: fuck");
+    expect(help.title).toBe("That wording isn't allowed here");
+    expect(help.description).not.toContain("fuck");
+  });
+
+  it("explains a length violation", () => {
+    expect(describeError("note body must be between 15 and 500 characters").title).toBe(
+      "That note is the wrong length",
+    );
+  });
+
+  it("explains a rate limit", () => {
+    expect(describeError("rate limit: at most 10 notes per hour").title).toBe(
+      "That's a lot for one hour",
+    );
+  });
+});

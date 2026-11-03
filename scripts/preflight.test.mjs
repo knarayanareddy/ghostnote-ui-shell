@@ -14,7 +14,7 @@ import {
 const KEY = "test-publishable-key-000000000000";
 
 /** Start e2e/mock-supabase.mjs in either the healthy or the pre-migration shape. */
-function startMock({ legacy = false } = {}) {
+function startMock({ legacy = false, staleSchema = false } = {}) {
   const port = 54400 + Math.floor(Math.random() * 400);
   const child = spawn("node", ["e2e/mock-supabase.mjs"], {
     cwd: process.cwd(),
@@ -22,6 +22,7 @@ function startMock({ legacy = false } = {}) {
       ...process.env,
       MOCK_SUPABASE_PORT: String(port),
       MOCK_SUPABASE_LEGACY: legacy ? "1" : "0",
+      MOCK_SUPABASE_STALE_SCHEMA: staleSchema ? "1" : "0",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -87,6 +88,29 @@ describe("preflight against a migrated project", () => {
     expect(result.checks.find((check) => check.id === "migrations-anonymity")?.status).toBe(
       "pass",
     );
+    expect(result.checks.find((check) => check.id === "migrations-schema")?.status).toBe("pass");
+  });
+});
+
+describe("preflight against a project that was pushed before the queue fix", () => {
+  it("fails on the missing migration even though every RPC exists", async () => {
+    // This is the case that used to report Ready: get_my_journal() and
+    // get_my_stats() have existed since the first hardening migration, so the
+    // RPC probe cannot tell an outdated project from an up-to-date one.
+    running = startMock({ staleSchema: true });
+    await running.ready;
+
+    const result = await runPreflight({ url: running.url, key: KEY });
+
+    expect(result.checks.find((check) => check.id === "migrations-rpc")?.status).toBe("pass");
+
+    const schemaCheck = result.checks.find((check) => check.id === "migrations-schema");
+    expect(schemaCheck?.status).toBe("fail");
+    expect(schemaCheck?.detail).toContain("20261103101500_claim_cap_and_filter_fold");
+
+    const report = renderReport(result);
+    expect(report).toContain("npm run db:push");
+    expect(report).not.toContain("Ready.");
   });
 });
 

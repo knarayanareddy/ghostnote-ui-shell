@@ -170,13 +170,13 @@ npm run check:secrets
 npm run preflight     # against the real project
 ```
 
-`preflight` exits `0` and prints `Ready.` only when all six checks pass: env
+`preflight` exits `0` and prints `Ready.` only when all seven checks pass: env
 present, key hygiene, project reachable, anonymous sign-ins on, RPCs deployed,
-notes not client-readable.
+`schema_state()` reporting every migration, notes not client-readable.
 
-`preflight` cannot see the receive cap or the filter rewrite — they are inside
-function bodies. To confirm the new migration actually landed, check in the SQL
-editor:
+The `schema_state()` check is what catches a project that was pushed *before* the
+queue cap and the filter rewrite: it names the missing migration and exits 1, so a
+half-migrated project can no longer say `Ready.`. To inspect it by hand:
 
 ```sql
 select proname from pg_proc

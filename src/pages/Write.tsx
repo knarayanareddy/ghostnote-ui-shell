@@ -9,11 +9,28 @@ import TagChips from "@/components/TagChips";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { findBannedContent } from "@/lib/bannedFilter";
+import { describeError } from "@/lib/errors";
 
 type PageState = "form" | "sending" | "success" | "error";
 
 const MIN_LENGTH = 15;
 const MAX_LENGTH = 500;
+
+const WriteError = ({ message }: { message: string }) => {
+  const help = describeError(message);
+
+  return (
+    <div role="alert" className="animate-fade-in space-y-1">
+      <p className="text-sm font-medium text-destructive">{help.title}</p>
+      <p className="text-xs text-muted-foreground">{help.description}</p>
+      {help.fix && (
+        <p className="text-xs text-muted-foreground">
+          Fix: <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{help.fix}</code>
+        </p>
+      )}
+    </div>
+  );
+};
 
 const Write = () => {
   const { userId } = useAuth();
@@ -61,6 +78,9 @@ const Write = () => {
     });
 
     if (error) {
+      // Keep the raw Postgres text in the console for debugging; show the user
+      // something they can act on (S-8).
+      console.error("note insert failed:", error);
       setErrorMsg(error.message);
       setPageState("error");
       return;
@@ -176,11 +196,7 @@ const Write = () => {
         </label>
       </div>
 
-      {pageState === "error" && errorMsg && (
-        <p role="alert" className="animate-fade-in text-sm text-destructive">
-          {errorMsg}
-        </p>
-      )}
+      {pageState === "error" && errorMsg && <WriteError message={errorMsg} />}
 
       <Button
         onClick={handleSubmit}

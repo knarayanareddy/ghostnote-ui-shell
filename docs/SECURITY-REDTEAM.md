@@ -49,6 +49,9 @@ Then `npm run preflight` should print **`Ready.`** (step-by-step detail:
       Until then identities are still free.
 - [ ] **S-5** Ship security headers (the CSP in S-5 is ready to paste). Note the
       CSP must allow `https://challenges.cloudflare.com` once S-4 is on.
+- [ ] **S-12 (remainder)** No abuse monitoring: nothing alerts on a spike of
+      rate-limit or claim errors. The queries are in S-12; wiring them to a cron
+      is a hosting decision.
 - [ ] **S-3** Rotate the key — still the single highest-value five minutes here.
 
 S-6 was partly fixed in this review; S-7..S-12 are lower priority.
@@ -65,12 +68,12 @@ S-6 was partly fixed in this review; S-7..S-12 are lower priority.
 | S-4 | **High** | A07 / A04 | Anonymous identities are free and unlimited — every rate limit resets | **Plumbed** — enable in dashboard |
 | S-5 | **Medium** | A05 | No CSP, no security headers, no `frame-ancestors` | Open (config supplied) |
 | S-6 | **Medium** | A06 | 22 advisories, 2 critical / 2 high, 3 in production deps | **Partially fixed** |
-| S-7 | **Medium** | A07 | Session never expires or ends; one browser = one permanent identity | Open |
-| S-8 | **Low** | A05 / A09 | Raw Postgres error strings rendered in the UI | Open |
+| S-7 | **Medium** | A07 | Session never expires or ends; one browser = one permanent identity | **Fixed** — "Forget this device" |
+| S-8 | **Low** | A05 / A09 | Raw Postgres error strings rendered in the UI | **Fixed** |
 | S-9 | **Low** | A05 | `allowedHosts: true` on a `::`-bound dev server | Open (dev only) |
 | S-10 | **Low** | A06 | CI actions pinned to mutable tags; third-party build plugin | Open |
 | S-11 | **Low** | A04 | No retention policy: anonymous users and notes accumulate forever | Open |
-| S-12 | **Info** | A01 / A09 | Definer-rights view, leftover grants, no abuse monitoring | Open |
+| S-12 | **Info** | A01 / A09 | Definer-rights view, leftover grants, no abuse monitoring | **Partly fixed** |
 
 ### Threat model in one paragraph
 
@@ -262,7 +265,7 @@ same rules on purpose, so the gap is authoritative, not cosmetic.
 confusables) and rebuilds `find_banned_content` around stems + suffixes;
 `src/lib/bannedFilter.ts` mirrors it. Verified:
 
-- 43/43 pgTAP assertions pass on Postgres 16 (22 of them new).
+- 50/50 pgTAP assertions pass on Postgres 16 (29 of them new).
 - 36/36 corpus cases return the *same* canonical match in TypeScript and SQL.
 - The nine ordinary-English guards still pass: `classic`, `assess`, `assume`,
   `assassin`, `damning`, `cocktail`, `prickly`, `grade a b student`, …
@@ -425,11 +428,11 @@ previous person's entire journal — which for this product is "the private thin
 strangers sent you". There is also no way for a user to start fresh short of
 clearing site data by hand (which the README tells them to do).
 
-**Fix:** a "Forget this device" action that calls `supabase.auth.signOut()` and
-clears storage, then re-establishes a new anonymous session on next visit; and a
-one-line expectation in the privacy copy that this is device-local. Be explicit
-in the docs that signing out does **not** delete already-sent or already-received
-notes — the identity is gone, the rows are not.
+**Shipped:** `src/lib/session.ts` signs out and removes only the `sb-*-auth*`
+keys (never unrelated storage), and the footer now carries a **Forget this
+device** action behind a confirmation dialog. The dialog says plainly that notes
+already sent or received are not deleted — the identity goes, the rows do not —
+and a fresh anonymous session is created on the next load.
 
 ---
 
@@ -445,7 +448,12 @@ errors through `describeError()` (`src/lib/errors.ts`); this path was missed.
 
 It is not a serious leak — the messages describe the user's own action — but they
 expose internal constraint names and give a clean oracle for probing filter
-rules. Route it through `describeError()` and keep the raw string in `console.error`.
+rules.
+
+**Shipped:** `Write.tsx` routes through `describeError()` and keeps the raw text
+in `console.error`. Two new branches cover the cases that reach this path:
+"that wording isn't allowed here" (filter) and "that note is the wrong length" —
+neither repeats the blocked word back to the sender.
 
 ---
 
@@ -500,11 +508,12 @@ statement, whatever you choose.
   guarding that (`clients cannot read the moderation queue`) — keep that test.
   Anyone who ever grants it to `authenticated` exposes `author_id` for every
   reported note.
-- `notes` still carries the default `UPDATE`/`DELETE` grants for `authenticated`.
-  RLS denies them (no policy), so it is not exploitable — but `REVOKE UPDATE,
-  DELETE ON public.notes FROM anon, authenticated;` is one line of defence in depth.
-- `get_my_journal()` has no `LIMIT`; a heavy recipient pulls the whole table.
-  Paginate when the journal grows.
+- ~~`notes` carries the default `UPDATE`/`DELETE` grants for `authenticated`.~~
+  **Fixed** in `20261103120000`: `REVOKE UPDATE, DELETE, TRUNCATE` on `notes` and
+  `reports`, asserted by pgTAP.
+- ~~`get_my_journal()` has no `LIMIT`.~~ **Fixed**: `get_my_journal(p_limit,
+  p_offset)` defaults to 50, clamps at 100, and the journal has a "Show older
+  notes" button.
 - `report_note` sets `status='reported'`, and `get_my_journal` only returns
   `status='delivered'` — so reporting a note makes it vanish from the reporter's
   own journal. Probably not what a user expects from "report"; worth a decision.
@@ -558,7 +567,9 @@ Worth stating plainly, because most of the design is sound:
 | History exposure | `gh api …/commits?path=.env` | `91a8dbd`, `149b975` |
 | XSS sinks | grep for `innerHTML`, `dangerouslySetInnerHTML`, `eval` | none |
 | S-1 fix | attack replay on Postgres 16 | 5 claims, 7 notes left, next user served |
-| S-2 fix | 43 pgTAP assertions + TS/SQL parity | 43/43 pass, 36/36 agree |
+| S-2 fix | pgTAP + TS/SQL parity | 50/50 assertions, 36/36 corpus cases agree |
+| S-7/S-8/S-12 | session, error copy, grants, paging | unit tests + 7 pgTAP assertions |
+| preflight | healthy / legacy / stale-schema mocks | 7/7 · 3+4 fail · fails on missing migration |
 
 **How the SQL was verified without Supabase:** a real PostgreSQL 16 server (not
 the mock) with a small shim for `auth.uid()`, the `anon`/`authenticated`/
