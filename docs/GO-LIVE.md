@@ -12,6 +12,11 @@ npm run preflight            # human-readable report, exit 1 if anything is miss
 npm run preflight -- --json  # same data, machine-readable
 ```
 
+> Hardening beyond launch-day ("one visitor can drain the queue", "the filter
+> misses `fucking`") lives in
+> [`SECURITY-REDTEAM.md`](SECURITY-REDTEAM.md#outstanding-work--do-these-first-important).
+> The three steps below are prerequisites for any of it to mean anything.
+
 `preflight` is read-only: it sends a handful of HEAD/POST probes with the public
 key and never deletes or writes note content. Its one side effect is an optional
 anonymous sign-in (one throwaway user is created). Skip it with

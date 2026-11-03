@@ -132,6 +132,12 @@ the content filter and rate limits to 10 notes per hour per author.
 
 ### Known limitations
 
+> A red-team pass against OWASP Top 10 is in
+> [`docs/SECURITY-REDTEAM.md`](docs/SECURITY-REDTEAM.md). It lists open issues
+> that matter more than anything below — notably that a single visitor can claim
+> and read the whole note queue (S-1), and that the content filter only matches
+> base words (S-2). Read it before inviting strangers.
+
 - The content filter is heuristic. It now catches letter-spaced text, but novel
   spellings and obfuscations that share no letters with the banned word still
   slip through. Move to an Edge Function + real classifier when volume justifies
