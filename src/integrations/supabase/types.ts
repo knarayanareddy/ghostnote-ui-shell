@@ -6,6 +6,8 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+export type NoteStatus = "queued" | "delivered" | "reported" | "deleted"
+
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
@@ -23,7 +25,7 @@ export type Database = {
           id: string
           opened_at: string | null
           recipient_id: string | null
-          status: string
+          status: NoteStatus
           tag: string | null
         }
         Insert: {
@@ -34,7 +36,7 @@ export type Database = {
           id?: string
           opened_at?: string | null
           recipient_id?: string | null
-          status?: string
+          status?: NoteStatus
           tag?: string | null
         }
         Update: {
@@ -45,7 +47,7 @@ export type Database = {
           id?: string
           opened_at?: string | null
           recipient_id?: string | null
-          status?: string
+          status?: NoteStatus
           tag?: string | null
         }
         Relationships: []
@@ -90,15 +92,11 @@ export type Database = {
       claim_ghost_note: {
         Args: { p_tag?: string }
         Returns: {
-          author_id: string
-          body: string
-          created_at: string
-          delivered_at: string | null
           id: string
-          opened_at: string | null
-          recipient_id: string | null
-          status: string
+          body: string
           tag: string | null
+          delivered_at: string | null
+          opened_at: string | null
         }[]
         SetofOptions: {
           from: "*"
@@ -106,6 +104,23 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      get_my_journal: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string
+          body: string
+          tag: string | null
+          delivered_at: string | null
+          opened_at: string | null
+        }[]
+      }
+      get_my_stats: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          sent: number
+          received: number
+        }[]
       }
       mark_note_opened: { Args: { p_note_id: string }; Returns: undefined }
       report_note: {

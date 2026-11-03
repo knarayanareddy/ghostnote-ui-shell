@@ -1,8 +1,9 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { Ghost } from "lucide-react";
-import { useEffect, useState } from "react";
-import { ensureAnonymousSession } from "@/lib/supabaseAuth";
-import { StatsProvider, useStats } from "@/components/StatsProvider";
+import { useAuth } from "@/lib/auth-context";
+import { useStats } from "@/hooks/useStats";
+import { Button } from "@/components/ui/button";
+import PageLoader from "@/components/PageLoader";
 
 const navItems = [
   { label: "Home", path: "/" },
@@ -12,83 +13,106 @@ const navItems = [
 ];
 
 const HeaderStats = () => {
-  const { stats } = useStats();
+  const { data, isError } = useStats();
+
+  if (isError) {
+    return (
+      <span className="hidden text-[11px] text-muted-foreground sm:inline">
+        Stats unavailable
+      </span>
+    );
+  }
+
   return (
-    <span className="text-[11px] text-muted-foreground tabular-nums hidden sm:inline">
-      Sent {stats.sent} · Received {stats.received}
+    <span className="hidden text-[11px] text-muted-foreground tabular-nums sm:inline">
+      Sent {data?.sent ?? "–"} · Received {data?.received ?? "–"}
     </span>
   );
 };
 
+const AuthError = ({ message, onRetry }: { message: string | null; onRetry: () => void }) => (
+  <div className="flex min-h-screen items-center justify-center px-4">
+    <div role="alert" className="max-w-md space-y-4 text-center">
+      <Ghost className="mx-auto h-10 w-10 text-muted-foreground/40" />
+      <h1 className="text-xl font-bold">Can't reach the ghosts</h1>
+      <p className="text-sm text-muted-foreground">
+        {message ?? "Something went wrong while starting your anonymous session."}
+      </p>
+      <div className="flex justify-center gap-3">
+        <Button onClick={onRetry}>Try again</Button>
+      </div>
+      <p className="text-xs text-muted-foreground/60">
+        If this keeps happening, anonymous sign-ins may be disabled for this project.
+      </p>
+    </div>
+  </div>
+);
+
 const AppLayoutInner = () => {
   const location = useLocation();
-  const [authStatus, setAuthStatus] = useState<"loading" | "connected" | "error">("loading");
+  const { status, error, retry } = useAuth();
 
-  useEffect(() => {
-    ensureAnonymousSession()
-      .then(() => setAuthStatus("connected"))
-      .catch(() => setAuthStatus("error"));
-  }, []);
+  if (status === "loading") {
+    return <PageLoader label="Waking the ghosts…" />;
+  }
+
+  if (status === "error") {
+    return <AuthError message={error} onRetry={retry} />;
+  }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b bg-card/80 backdrop-blur-md sticky top-0 z-10">
-        <div className="max-w-[700px] mx-auto px-4 sm:px-6 py-3 sm:py-4">
+    <div className="flex min-h-screen flex-col">
+      <a
+        href="#main"
+        className="sr-only rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50"
+      >
+        Skip to content
+      </a>
+
+      <header className="sticky top-0 z-10 border-b bg-card/80 backdrop-blur-md">
+        <div className="mx-auto max-w-[700px] px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-2 group">
-              <Ghost className="w-5 h-5 text-primary transition-transform group-hover:scale-110" />
-              <span className="font-serif font-bold text-lg text-foreground">Kindling</span>
+            <Link to="/" className="group flex items-center gap-2">
+              <Ghost className="h-5 w-5 text-primary transition-transform group-hover:scale-110" />
+              <span className="font-serif text-lg font-bold text-foreground">Kindling</span>
             </Link>
-            <nav className="flex items-center gap-0.5 sm:gap-1">
-              {navItems.map((item) => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`px-2 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all duration-200 ${
-                    location.pathname === item.path
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              ))}
+            <nav aria-label="Main" className="flex items-center gap-0.5 sm:gap-1">
+              {navItems.map((item) => {
+                const isActive = location.pathname === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`rounded-md px-2 py-1.5 text-xs font-medium transition-all duration-200 sm:px-3 sm:text-sm ${
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
             </nav>
           </div>
-          <div className="flex items-center justify-between mt-1">
+          <div className="mt-1 flex items-center justify-between">
             <p className="text-[11px] text-muted-foreground">
               Anonymous kindness. No replies. No likes.
             </p>
-            <div className="flex items-center gap-2">
-              {authStatus === "connected" && <HeaderStats />}
-              <span
-                className={`text-[10px] font-medium ${
-                  authStatus === "connected"
-                    ? "text-green-600"
-                    : authStatus === "error"
-                    ? "text-destructive"
-                    : "text-muted-foreground"
-                }`}
-              >
-                {authStatus === "connected"
-                  ? "·"
-                  : authStatus === "error"
-                  ? "Offline"
-                  : "…"}
-              </span>
-            </div>
+            <HeaderStats />
           </div>
         </div>
       </header>
 
-      <main className="flex-1">
-        <div className="max-w-[700px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main id="main" className="flex-1">
+        <div className="mx-auto max-w-[700px] px-4 py-6 sm:px-6 sm:py-8">
           <Outlet />
         </div>
       </main>
 
       <footer className="border-t py-4">
-        <p className="text-[11px] text-muted-foreground/50 text-center">
+        <p className="text-center text-[11px] text-muted-foreground/50">
           No accounts. No tracking. Just kindness.
         </p>
       </footer>
@@ -96,10 +120,6 @@ const AppLayoutInner = () => {
   );
 };
 
-const AppLayout = () => (
-  <StatsProvider>
-    <AppLayoutInner />
-  </StatsProvider>
-);
+const AppLayout = () => <AppLayoutInner />;
 
 export default AppLayout;

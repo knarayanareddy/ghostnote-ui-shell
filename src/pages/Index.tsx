@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Ghost, ChevronDown, ChevronUp, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 
 const SHOW_DEMO_TIPS = true;
@@ -14,20 +15,20 @@ const SAMPLE_NOTES = [
 ];
 
 const DemoPanel = () => {
+  const { userId } = useAuth();
   const [open, setOpen] = useState(false);
   const [seeding, setSeeding] = useState(false);
 
   const handleSeed = async () => {
-    setSeeding(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error("Not signed in.");
-      setSeeding(false);
+    if (!userId) {
+      toast.error("Still connecting — try again in a moment.");
       return;
     }
 
+    setSeeding(true);
+
     const rows = SAMPLE_NOTES.map((n) => ({
-      author_id: user.id,
+      author_id: userId,
       body: n.body,
       tag: n.tag,
     }));
