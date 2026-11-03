@@ -14,7 +14,7 @@ No profiles. No replies. No likes. Just kindness, drifting.
 
 | Layer    | Choice                                                            |
 | -------- | ----------------------------------------------------------------- |
-| UI       | React 18 + TypeScript, Vite 5, Tailwind + shadcn/ui, sonner toasts |
+| UI       | React 19 + TypeScript, Vite 8 (Rolldown), Tailwind + shadcn/ui, sonner toasts |
 | Routing  | react-router-dom (routes are lazy-loaded)                          |
 | Data     | Supabase (Postgres + RLS + RPC), `@tanstack/react-query`           |
 | Identity | Supabase **anonymous** sign-in — no accounts, one session per browser |
@@ -22,7 +22,7 @@ No profiles. No replies. No likes. Just kindness, drifting.
 
 ## Prerequisites
 
-- Node.js 20+ (see `engines` in `package.json`)
+- Node.js 22.22+, 24.15+ or 26+ (Vite 8 / Vitest 5 / jsdom 30 floor — see `engines` in `package.json`)
 - A Supabase project — [supabase.com](https://supabase.com) or a local stack via the [Supabase CLI](https://supabase.com/docs/guides/cli)
 
 ## Setup
