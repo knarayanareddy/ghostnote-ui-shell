@@ -1,5 +1,10 @@
 # Local development configuration (supabase start / supabase db reset).
-# Regenerate with `supabase init` if the CLI introduces new defaults.
+#
+# Key names follow Supabase CLI v2.30+/v3. Older 1.x CLIs used
+# `[auth.anonymous] enabled = true` instead of
+# `[auth] enable_anonymous_sign_ins = true`; note that an unknown block is
+# silently ignored, so anonymous sign-ins would stay off. Verify with:
+#   supabase init --force   # in a scratch dir, then diff the keys
 project_id = "jhlflndieocnpzsbsomv"
 
 [api]
@@ -12,7 +17,7 @@ max_rows = 1000
 [db]
 port = 54322
 shadow_port = 54320
-major_version = 15
+major_version = 17
 
 [db.seed]
 enabled = true
@@ -22,7 +27,7 @@ sql_paths = ["./seed.sql"]
 enabled = true
 port = 54323
 
-[inbucket]
+[local_smtp]
 enabled = true
 port = 54324
 
@@ -35,12 +40,15 @@ site_url = "http://localhost:8080"
 additional_redirect_urls = ["http://localhost:8080"]
 jwt_expiry = 3600
 enable_signup = true
-
 # Required by the app: every visitor is an anonymous user.
-[auth.anonymous]
-enabled = true
+enable_anonymous_sign_ins = true
 
 [auth.email]
-enable_signup = true
+enabled = true
 double_confirm_changes = false
 enable_confirmations = false
+
+[auth.rate_limit]
+# Anonymous sign-ins per hour per IP. The app creates one per browser, so this
+# only matters for scripted abuse.
+anonymous_users = 30

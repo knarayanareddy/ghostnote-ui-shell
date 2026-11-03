@@ -1,19 +1,24 @@
 -- Database tests for the security hardening.
 --
--- Run with a local Supabase stack:
+-- Run against a local stack:
 --   supabase start
 --   supabase test db
 --
 -- Everything runs inside one transaction and is rolled back at the end.
+--
+-- Note on assertions: pgTAP's two-argument throws_ok(sql, text) treats the
+-- second argument as the *expected message*, not as a description. Always pass
+-- four arguments (sql, errcode, errmsg, description) to stay unambiguous.
 
 begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(19);
+select plan(21);
 
--- Fixtures: two anonymous users. The insert trigger derives author_id from the
--- JWT claim, so the claim has to be set before writing notes.
+-- ── Fixtures ───────────────────────────────────────────────────────────────
+-- The insert trigger derives author_id from the JWT claim, so the claim has to
+-- be set before writing notes.
 set local "request.jwt.claim.sub" to '11111111-1111-1111-1111-111111111111';
 
 insert into public.notes (body, tag)
@@ -31,22 +36,36 @@ select is(
   'a new note has no recipient'
 );
 
+-- ── Insert validation (length, content, vocabulary) ────────────────────────
 select throws_ok(
   $$ insert into public.notes (body) values ('too short') $$,
+  '23514',
+  null,
   'short notes are rejected'
 );
 
 select throws_ok(
   $$ insert into public.notes (body) values ('you are a total b4stard and I mean it') $$,
+  '23514',
+  null,
   'banned content is rejected server-side'
 );
 
 select throws_ok(
+  $$ insert into public.notes (body) values ('what the f u c k is this about then') $$,
+  '23514',
+  null,
+  'letter-spaced evasion is rejected server-side'
+);
+
+select throws_ok(
   $$ insert into public.notes (body, tag) values ('a perfectly kind note with a bad tag', 'hax') $$,
+  '23514',
+  null,
   'tags outside the vocabulary are rejected'
 );
 
--- Forged delivery fields are neutralised by the trigger.
+-- ── Forged delivery fields are neutralised ─────────────────────────────────
 insert into public.notes (author_id, body, status, recipient_id, delivered_at)
 values (
   '11111111-1111-1111-1111-111111111111',
@@ -68,7 +87,7 @@ select is(
   'a forged recipient is discarded'
 );
 
--- Reader functions exist and are granted to authenticated only.
+-- ── Surface area ───────────────────────────────────────────────────────────
 select has_function('public', 'get_my_journal', 'journal reader exists');
 select has_function('public', 'get_my_stats', 'stats reader exists');
 
@@ -82,13 +101,22 @@ select ok(
   'authenticated cannot INSERT into reports directly'
 );
 
--- Act as the recipient.
+-- ── As the recipient ───────────────────────────────────────────────────────
 set local role authenticated;
 set local "request.jwt.claim.sub" to '22222222-2222-2222-2222-222222222222';
 
 select throws_ok(
   $$ select author_id from public.notes $$,
+  '42501',
+  null,
   'the recipient cannot read author_id'
+);
+
+select throws_ok(
+  $$ select * from public.moderation_queue $$,
+  '42501',
+  null,
+  'clients cannot read the moderation queue'
 );
 
 select is(
@@ -115,18 +143,24 @@ select is(
   'stats count the received note'
 );
 
+-- Keep the id: once reported, the note leaves the journal, so a later lookup
+-- through get_my_journal() would return NULL.
+create temp table claimed_note as select id from public.get_my_journal();
+
 select throws_ok(
   $$ select public.report_note('33333333-3333-3333-3333-333333333333', 'probe') $$,
+  '42501',
+  null,
   'reporting an unknown note id fails instead of acting as an existence oracle'
 );
 
 select lives_ok(
-  $$ select public.report_note((select id from public.get_my_journal()), 'unkind') $$,
+  $$ select public.report_note((select id from claimed_note), 'unkind') $$,
   'the recipient can report a note they received'
 );
 
 select lives_ok(
-  $$ select public.report_note((select id from public.get_my_journal()), 'again') $$,
+  $$ select public.report_note((select id from claimed_note), 'again') $$,
   'reporting twice is a no-op, not an error'
 );
 
