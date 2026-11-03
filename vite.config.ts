@@ -8,6 +8,9 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    // Dev servers get proxied under generated hostnames (Codespaces, E2B
+    // previews, tunnels). Vite rejects unknown Host headers by default.
+    allowedHosts: true,
     hmr: {
       overlay: false,
     },
