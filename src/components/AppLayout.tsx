@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useStats } from "@/hooks/useStats";
 import { Button } from "@/components/ui/button";
 import PageLoader from "@/components/PageLoader";
+import { describeError } from "@/lib/errors";
 
 const navItems = [
   { label: "Home", path: "/" },
@@ -30,23 +31,33 @@ const HeaderStats = () => {
   );
 };
 
-const AuthError = ({ message, onRetry }: { message: string | null; onRetry: () => void }) => (
-  <div className="flex min-h-screen items-center justify-center px-4">
-    <div role="alert" className="max-w-md space-y-4 text-center">
-      <Ghost className="mx-auto h-10 w-10 text-muted-foreground/40" />
-      <h1 className="text-xl font-bold">Can't reach the ghosts</h1>
-      <p className="text-sm text-muted-foreground">
-        {message ?? "Something went wrong while starting your anonymous session."}
-      </p>
-      <div className="flex justify-center gap-3">
-        <Button onClick={onRetry}>Try again</Button>
+const AuthError = ({ message, onRetry }: { message: string | null; onRetry: () => void }) => {
+  const help = describeError(
+    message ?? "Something went wrong while starting your anonymous session.",
+  );
+
+  return (
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <div role="alert" className="max-w-md space-y-4 text-center">
+        <Ghost className="mx-auto h-10 w-10 text-muted-foreground/40" />
+        <h1 className="text-xl font-bold">Can't reach the ghosts</h1>
+        <p className="text-sm font-medium text-foreground">{help.title}</p>
+        <p className="text-sm text-muted-foreground">{help.description}</p>
+        {help.fix && (
+          <p className="text-xs text-muted-foreground">
+            Fix: <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{help.fix}</code>
+          </p>
+        )}
+        <div className="flex justify-center gap-3">
+          <Button onClick={onRetry}>Try again</Button>
+        </div>
+        <p className="text-xs text-muted-foreground/60">
+          Or run <code className="font-mono">npm run preflight</code> to see what is missing.
+        </p>
       </div>
-      <p className="text-xs text-muted-foreground/60">
-        If this keeps happening, anonymous sign-ins may be disabled for this project.
-      </p>
     </div>
-  </div>
-);
+  );
+};
 
 const AppLayoutInner = () => {
   const location = useLocation();

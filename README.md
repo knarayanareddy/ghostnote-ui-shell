@@ -70,6 +70,8 @@ Both are validated at boot in [`src/lib/env.ts`](src/lib/env.ts), so a missing o
 | `npm run db:push`   | Apply `supabase/migrations` to the linked project        |
 | `npm run db:types`  | Regenerate `src/integrations/supabase/types.ts`          |
 | `npm run db:test`   | pgTAP suite in `supabase/tests`                          |
+| `npm run preflight` | Check a real project against the three go-live steps     |
+| `npm run check:secrets` | Fail if a real key or a tracked `.env` reaches the repo |
 
 ## Architecture
 
@@ -170,12 +172,16 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/rls.test.sql
 
 ## Deployment
 
-1. `supabase db push` against the production project (migrations are the only
+[`docs/GO-LIVE.md`](docs/GO-LIVE.md) is the full runbook. In short:
+
+1. Enable anonymous sign-ins in the dashboard.
+2. `supabase db push` against the production project (migrations are the only
    source of truth — there is no `supabase_setup.sql` any more).
-2. Enable anonymous sign-ins in the dashboard.
 3. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in your host.
 4. `npm run build` → deploy `dist/`. The app is a static SPA, so configure a
    rewrite of all paths to `index.html`.
+5. `npm run preflight` against the deployed project — it exits `0` and prints
+   `Ready.` only when all three steps actually took effect.
 
 ### `supabase/config.toml` and CLI versions
 

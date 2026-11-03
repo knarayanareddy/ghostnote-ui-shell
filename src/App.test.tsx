@@ -77,17 +77,40 @@ describe("anonymous session gate", () => {
     expect(signInAnonymously).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a retryable error when the journal query fails", async () => {
+  it("explains an un-migrated database instead of showing a raw error", async () => {
     rpc.mockImplementation(async (fn: string) =>
       fn === "get_my_journal"
-        ? { data: null, error: { message: "network is down" } }
+        ? {
+            data: null,
+            error: {
+              code: "PGRST202",
+              message:
+                "Could not find the function public.get_my_journal in the schema cache",
+            },
+          }
         : { data: [], error: null },
     );
 
     goTo("/journal");
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("We couldn't load your journal");
+    expect(alert).toHaveTextContent("The database hasn't been migrated yet");
+    expect(alert).toHaveTextContent("npm run db:push");
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  });
+
+  it("still surfaces a generic failure with a retry", async () => {
+    rpc.mockImplementation(async (fn: string) =>
+      fn === "get_my_journal"
+        ? { data: null, error: { message: "kaboom" } }
+        : { data: [], error: null },
+    );
+
+    goTo("/journal");
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Something went wrong");
+    expect(alert).toHaveTextContent("kaboom");
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 

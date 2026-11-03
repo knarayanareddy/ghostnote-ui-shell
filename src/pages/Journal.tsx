@@ -9,6 +9,26 @@ import ReportDialog from "@/components/ReportDialog";
 import ReportButton from "@/components/ReportButton";
 import PageLoader from "@/components/PageLoader";
 import { useJournal } from "@/hooks/useJournal";
+import { describeError } from "@/lib/errors";
+
+const JournalError = ({ error, onRetry }: { error: unknown; onRetry: () => void }) => {
+  const help = describeError(error);
+
+  return (
+    <div role="alert" className="space-y-4 py-12 text-center">
+      <p className="text-sm font-medium text-destructive">{help.title}</p>
+      <p className="mx-auto max-w-sm text-xs text-muted-foreground">{help.description}</p>
+      {help.fix && (
+        <p className="mx-auto max-w-sm text-xs text-muted-foreground">
+          Fix: <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{help.fix}</code>
+        </p>
+      )}
+      <Button variant="outline" onClick={onRetry}>
+        Try again
+      </Button>
+    </div>
+  );
+};
 
 const Journal = () => {
   const { data: notes, isPending, isError, error, refetch } = useJournal();
@@ -36,17 +56,7 @@ const Journal = () => {
       {isPending ? (
         <PageLoader label="Loading your journal…" />
       ) : isError ? (
-        <div role="alert" className="space-y-4 py-12 text-center">
-          <p className="text-sm font-medium text-destructive">
-            We couldn't load your journal.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {error instanceof Error ? error.message : "Unknown error"}
-          </p>
-          <Button variant="outline" onClick={() => void refetch()}>
-            Try again
-          </Button>
-        </div>
+        <JournalError error={error} onRetry={() => void refetch()} />
       ) : notes.length === 0 ? (
         <EmptyState
           message="Your journal is empty."

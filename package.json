@@ -14,6 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
+    "preflight": "node scripts/preflight.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs",
     "db:types": "supabase gen types typescript --linked --schema public > src/integrations/supabase/types.ts",
     "db:push": "supabase db push",
     "db:test": "supabase test db"
