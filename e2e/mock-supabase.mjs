@@ -20,6 +20,8 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 
 const PORT = Number(process.env.MOCK_SUPABASE_PORT ?? 54399);
+/** Emulate the pre-migration schema (no safe RPCs, notes table readable). */
+const LEGACY = process.env.MOCK_SUPABASE_LEGACY === "1";
 const HOST = process.env.MOCK_SUPABASE_HOST ?? "0.0.0.0";
 
 /** @type {{ id: string, authorId: string, body: string, tag: string | null, status: string, deliveredAt: string | null, recipientId: string | null }[]} */
@@ -122,6 +124,18 @@ const server = createServer(async (req, res) => {
   }
 
   // ── GoTrue ──────────────────────────────────────────────────────────────
+  if (path === "/auth/v1/settings" && req.method === "GET") {
+    json(res, 200, {
+      disable_signup: false,
+      mailer_autoconfirm: true,
+      external: {},
+      // Pre-migration projects in these tests also model a project with
+      // anonymous sign-ins switched off.
+      anonymous_users_enabled: !LEGACY,
+    });
+    return;
+  }
+
   if (path === "/auth/v1/signup" && req.method === "POST") {
     const session = makeSession(randomUUID());
     json(res, 200, session);
@@ -149,10 +163,40 @@ const server = createServer(async (req, res) => {
   }
 
   // ── PostgREST ───────────────────────────────────────────────────────────
+  // Post-migration the client has no SELECT privilege on notes. The legacy
+  // (pre-migration) schema returned an empty 200 array instead. `npm run
+  // preflight` uses this distinction to tell whether migrations were applied.
+  if (path === "/rest/v1/notes" && req.method === "GET") {
+    if (LEGACY) {
+      json(res, 200, []);
+      return;
+    }
+    json(res, 401, { code: "42501", message: "permission denied for table notes" });
+    return;
+  }
+
   if (path === "/rest/v1/notes" && req.method === "POST") {
     const body = await readBody(req);
     const authorId = userFrom(req) ?? randomUUID();
     const rows = Array.isArray(body) ? body : [body];
+
+    if (!LEGACY) {
+      // Mirrors enforce_note_insert: short bodies and banned words are refused.
+      for (const row of rows) {
+        const text = String(row.body ?? "").trim();
+        if (text.length < 15 || text.length > 500) {
+          json(res, 400, {
+            code: "23514",
+            message: "note body must be between 15 and 500 characters",
+          });
+          return;
+        }
+        if (/\b(fuck|shit|bastard)\b/.test(text.toLowerCase())) {
+          json(res, 400, { code: "23514", message: "note contains blocked content" });
+          return;
+        }
+      }
+    }
 
     for (const row of rows) {
       notes.push({
@@ -174,6 +218,14 @@ const server = createServer(async (req, res) => {
     const fn = path.slice("/rest/v1/rpc/".length);
     const body = await readBody(req);
     const userId = userFrom(req);
+
+    if (LEGACY) {
+      json(res, 404, {
+        code: "PGRST202",
+        message: `Could not find the function public.${fn} in the schema cache`,
+      });
+      return;
+    }
 
     if (!userId) {
       json(res, 401, { message: "no session" });
@@ -275,5 +327,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`mock supabase listening on http://${HOST}:${PORT}`);
+  console.log(
+    `mock supabase listening on http://${HOST}:${PORT}${LEGACY ? " (legacy schema)" : ""}`,
+  );
 });

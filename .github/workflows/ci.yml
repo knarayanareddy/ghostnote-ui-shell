@@ -36,6 +36,10 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # Fails if a real Supabase key (or a tracked .env) lands in the repo.
+      - name: Secret hygiene
+        run: npm run check:secrets
+
       - name: Build
         run: npm run build
 
