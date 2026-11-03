@@ -38,16 +38,20 @@ Then `npm run preflight` should print **`Ready.`** (step-by-step detail:
 
 **Then, from this review, before accepting real users:**
 
-- [ ] **S-1** Cap `claim_ghost_note` per identity and require a reclaim path for
-      unopened notes — one visitor can currently read and consume the whole queue.
-- [ ] **S-2** Make the content filter suffix-aware (and strip invisible
-      characters / fold homoglyphs) in *both* the TS and SQL copies.
-- [ ] **S-4** Add CAPTCHA to anonymous sign-in and IP-level limits at the host;
-      per-identity limits mean nothing while identities are free.
-- [ ] **S-5** Ship security headers (the CSP in S-5 is ready to paste).
+- [x] **S-1** Claim cap + reclaim path — `20261103101500_claim_cap_and_filter_fold.sql`.
+      Applied by `npm run db:push`; **step 2 above now also applies this fix.**
+      Schedule `public.reclaim_stale_notes()` if `pg_cron` is not enabled
+      (see [GO-LIVE](GO-LIVE.md#5-keep-the-queue-alive)).
+- [x] **S-2** Filter is suffix-aware and folds homoglyphs — in both copies,
+      locked together by 43 pgTAP assertions and the TS suite.
+- [ ] **S-4** CAPTCHA is wired in code but **must be switched on**: set
+      `VITE_TURNSTILE_SITE_KEY` and turn on Attack Protection in the dashboard.
+      Until then identities are still free.
+- [ ] **S-5** Ship security headers (the CSP in S-5 is ready to paste). Note the
+      CSP must allow `https://challenges.cloudflare.com` once S-4 is on.
+- [ ] **S-3** Rotate the key — still the single highest-value five minutes here.
 
-Each has a concrete fix below. S-6 was partly fixed in this review; S-7..S-12 are
-lower priority.
+S-6 was partly fixed in this review; S-7..S-12 are lower priority.
 
 ---
 
@@ -55,10 +59,10 @@ lower priority.
 
 | ID | Severity | OWASP | Finding | Status |
 |----|----------|-------|---------|--------|
-| S-1 | **Critical** | A01 / A04 | One identity can claim (and read) the entire note queue | Open |
-| S-2 | **High** | A04 / A08 | Content filter matches base words only — `fucking`, `asshole`, `shitty` pass | Open, tracked by tests |
+| S-1 | **Critical** | A01 / A04 | One identity can claim (and read) the entire note queue | **Fixed** — `20261103101500` |
+| S-2 | **High** | A04 / A08 | Content filter matches base words only — `fucking`, `asshole`, `shitty` pass | **Fixed** — SQL + TS, 43 pgTAP assertions |
 | S-3 | **High** | A02 / A05 | Publishable key committed to public history, not yet rotated | Open (runbook) |
-| S-4 | **High** | A07 / A04 | Anonymous identities are free and unlimited — every rate limit resets | Open |
+| S-4 | **High** | A07 / A04 | Anonymous identities are free and unlimited — every rate limit resets | **Plumbed** — enable in dashboard |
 | S-5 | **Medium** | A05 | No CSP, no security headers, no `frame-ancestors` | Open (config supplied) |
 | S-6 | **Medium** | A06 | 22 advisories, 2 critical / 2 high, 3 in production deps | **Partially fixed** |
 | S-7 | **Medium** | A07 | Session never expires or ends; one browser = one permanent identity | Open |
@@ -174,8 +178,21 @@ which is the part users actually care about.
 3. **Raise the cost of an identity** — see S-4. A per-identity cap alone is a
    speed bump for anyone willing to sign up in a loop.
 
-**Regression test to add** (`supabase/tests/`): two legal claims succeed, the
-third within the hour raises `53400`.
+**Shipped** in `20261103101500_claim_cap_and_filter_fold.sql`:
+
+- `claim_ghost_note` refuses with SQLSTATE `53400` once the caller has received
+  **5 notes in the last hour** — the identity cap, matching the send limit's
+  shape.
+- `public.reclaim_stale_notes(interval)` returns notes that were delivered but
+  never opened to the pool (default grace: 24 hours). Revoked from `anon` and
+  `authenticated`; scheduled hourly when `pg_cron` is installed, otherwise call it
+  from your own scheduler.
+- Verified on a real Postgres 16: the same attack now receives 5 notes, leaves 7
+  in the pool, and the next visitor still gets one.
+
+**Still open, by design:** a determined attacker can create another identity (S-4)
+and take five more. That is why S-4 matters — the cap bounds one identity, the
+CAPTCHA bounds identities.
 
 ---
 
@@ -240,7 +257,19 @@ same rules on purpose, so the gap is authoritative, not cosmetic.
    the misses above as `it.fails` cases. Fix the filter and those tests turn red —
    that is the reminder to delete the marker, not a regression.
 
-Still heuristic. The honest framing for users and the README is "cheap first
+**Shipped.** `20261103101500_claim_cap_and_filter_fold.sql` adds
+`public.fold_for_filter` (NFKC, invisible characters, Cyrillic/Greek
+confusables) and rebuilds `find_banned_content` around stems + suffixes;
+`src/lib/bannedFilter.ts` mirrors it. Verified:
+
+- 43/43 pgTAP assertions pass on Postgres 16 (22 of them new).
+- 36/36 corpus cases return the *same* canonical match in TypeScript and SQL.
+- The nine ordinary-English guards still pass: `classic`, `assess`, `assume`,
+  `assassin`, `damning`, `cocktail`, `prickly`, `grade a b student`, …
+- The previously-failing `it.fails` markers are gone, replaced by real assertions
+  in `src/lib/bannedFilter.hardening.test.ts`.
+
+Still heuristic. The honest framing for users and the README remains "cheap first
 pass, not a moderation system"; a classifier belongs in an Edge Function once
 volume justifies the spend.
 
@@ -284,6 +313,14 @@ real speed bump — but it is *local* config. The dashboard value is what applie
 production, and it is not visible from here. Confirm it, and note that it is
 per-IP, so a proxy pool defeats it.
 
+**Shipped (opt-in):** `src/lib/captcha.ts` loads Cloudflare Turnstile only when
+`VITE_TURNSTILE_SITE_KEY` is set, solves an invisible challenge, and passes the
+token to `signInAnonymously({ options: { captchaToken } })`. With no key the app
+behaves exactly as before. **You still have to switch it on** — see
+[GO-LIVE step 4](GO-LIVE.md#4-turn-on-the-captcha-optional-but-recommended).
+Failure modes are mapped to plain copy, and a failed challenge refuses to sign in
+rather than silently retrying without a token.
+
 **Fix, in order of effectiveness:**
 
 1. **CAPTCHA on anonymous sign-in** — Supabase supports hCaptcha/Turnstile:
@@ -315,11 +352,14 @@ start with `Content-Security-Policy-Report-Only`:
 
 ```csp
 default-src 'self';
-script-src 'self';
+script-src 'self' https://challenges.cloudflare.com;
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
 font-src 'self' https://fonts.gstatic.com;
 img-src 'self' data:;
-connect-src 'self' https://YOUR-PROJECT.supabase.co wss://YOUR-PROJECT.supabase.co;
+connect-src 'self' https://YOUR-PROJECT.supabase.co wss://YOUR-PROJECT.supabase.co
+            https://challenges.cloudflare.com;
+frame-src https://challenges.cloudflare.com;
+
 frame-ancestors 'none';
 base-uri 'none';
 form-action 'self';
@@ -517,9 +557,15 @@ Worth stating plainly, because most of the design is sound:
 | Bundle secret scan | grep `dist/` for JWTs, `service_role`, `sb_secret_` | clean (SDK code only) |
 | History exposure | `gh api …/commits?path=.env` | `91a8dbd`, `149b975` |
 | XSS sinks | grep for `innerHTML`, `dangerouslySetInnerHTML`, `eval` | none |
+| S-1 fix | attack replay on Postgres 16 | 5 claims, 7 notes left, next user served |
+| S-2 fix | 43 pgTAP assertions + TS/SQL parity | 43/43 pass, 36/36 agree |
 
-**Not executed, and why:** no live database (no Docker, no Supabase CLI in this
-environment) — so RLS, the claim cap and the SQL filter were reviewed by reading
-and exercised only through the project's mock; and no network path to Supabase —
-so the key rotation, the anonymous-sign-in toggle, and any live probing of the
-deployed project remain yours (see the important block at the top).
+**How the SQL was verified without Supabase:** a real PostgreSQL 16 server (not
+the mock) with a small shim for `auth.uid()`, the `anon`/`authenticated`/
+`service_role` roles and Supabase's default grants. Both migrations applied
+cleanly, the pgTAP suite ran against it through a compatibility shim, and the
+S-1 attack was replayed before and after the fix.
+
+**Not executed, and why:** still no network path to your Supabase project — so
+the key rotation, the anonymous-sign-in toggle, the CAPTCHA dashboard switch and
+any probing of the deployed project remain yours (see the block at the top).

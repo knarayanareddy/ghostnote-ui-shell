@@ -9,6 +9,7 @@ import Envelope from "@/components/Envelope";
 import ReportDialog from "@/components/ReportDialog";
 import ReportButton from "@/components/ReportButton";
 import { supabase } from "@/integrations/supabase/client";
+import { describeError } from "@/lib/errors";
 import type { Database } from "@/integrations/supabase/types";
 
 type ClaimedNote = Database["public"]["Functions"]["claim_ghost_note"]["Returns"][number];
@@ -190,12 +191,15 @@ const Inbox = () => {
 
   // ── Error ──
   if (state.status === "error") {
+    const help = describeError(state.message);
+
     return (
       <div className="animate-fade-in space-y-4 text-center">
         <h1 className="mb-1 text-2xl font-bold">Inbox</h1>
-        <p role="alert" className="text-sm text-destructive">
-          {state.message}
-        </p>
+        <div role="alert" className="space-y-2">
+          <p className="text-sm font-medium text-destructive">{help.title}</p>
+          <p className="mx-auto max-w-sm text-xs text-muted-foreground">{help.description}</p>
+        </div>
         <Button variant="outline" onClick={handleSummon}>
           Try again
         </Button>

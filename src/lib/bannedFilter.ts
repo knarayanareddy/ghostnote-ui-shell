@@ -14,16 +14,23 @@
 //   4. a letter-run pass so "f u c k" and "k i l l y o u r s e l f" collapse
 //      back into whole words
 //
+//   5. folding (NFKC, invisible characters, Cyrillic/Greek homoglyphs) so
+//      "ｆｕｃｋ" and "fuсk" are the same string, and
+//   6. inflected forms ("fucking", "shitty", "retarded", "bitches").
+//
 // What it still cannot catch (documented in the migration too): novel spellings
 // and obfuscations that share no letters with the banned word. A real
 // classifier belongs in an Edge Function once volume justifies it.
 
-const BANNED_WORDS = [
+/**
+ * Stems that are also matched with the suffixes below. Keep this list, the
+ * suffix list and the SQL copy in
+ * supabase/migrations/20261103101500_claim_cap_and_filter_fold.sql in sync.
+ */
+const BANNED_STEMS = [
   "fuck",
   "shit",
-  "damn",
   "bitch",
-  "ass",
   "bastard",
   "dick",
   "cunt",
@@ -31,12 +38,69 @@ const BANNED_WORDS = [
   "nigga",
   "faggot",
   "retard",
+  "bullshit",
+  "horseshit",
+  "dipshit",
+  "asshole",
+  "dumbass",
+  "jackass",
+  "asshat",
+  "motherfuck",
+  "retardation",
+] as const;
+
+/**
+ * Short words that must stay whole: "ass" with suffixes would swallow "assess",
+ * and "damn" + "ing" is ordinary English ("damning with faint praise").
+ */
+const BANNED_EXACT = ["ass", "damn"] as const;
+
+const SUFFIXES = [
+  "",
+  "s",
+  "es",
+  "ed",
+  "d",
+  "er",
+  "ers",
+  "ing",
+  "ings",
+  "y",
+  "ies",
+  "ty",
 ] as const;
 
 const BANNED_PHRASES = ["kill yourself", "kys"] as const;
 
-/** Minimum length before the vowel-collapsed comparison is applied. */
-const VOWEL_CHECK_MIN_LENGTH = 4;
+/** Zero-width, directional marks, word joiner, BOM, soft hyphen, MVS. */
+const INVISIBLE = /[\u200B-\u200F\u2060\uFEFF\u00AD\u180E]/g;
+
+/**
+ * Letters that render identically to Latin ones. NFKC handles fullwidth text;
+ * this handles Cyrillic and Greek, which it does not fold.
+ */
+const CONFUSABLES: Record<string, string> = {
+  "\u0430": "a", // Cyrillic а
+  "\u0435": "e", // е
+  "\u043E": "o", // о
+  "\u0440": "p", // р
+  "\u0441": "c", // с
+  "\u0443": "y", // у
+  "\u0445": "x", // х
+  "\u0456": "i", // і
+  "\u03BF": "o", // Greek ο
+  "\u03B1": "a", // α
+  "\u03B5": "e", // ε
+  "\u03B9": "i", // ι
+};
+
+/** NFKC, invisible characters deleted, confusables mapped, lowercased. */
+export function foldForFilter(text: string): string {
+  return Array.from(text.normalize("NFKC").replace(INVISIBLE, ""))
+    .map((char) => CONFUSABLES[char] ?? char)
+    .join("")
+    .toLowerCase();
+}
 
 const LEET_MAP: Record<string, string> = {
   "0": "o",
@@ -55,7 +119,7 @@ function unleet(text: string): string {
 
 /** Lowercase, leet-normalised, punctuation → single space, trimmed. */
 export function normalizeForFilter(text: string): string {
-  return unleet(text)
+  return unleet(foldForFilter(text))
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -63,7 +127,7 @@ export function normalizeForFilter(text: string): string {
 
 /** Same as normalise, but punctuation is deleted instead of spaced ("f*ck" → "fck"). */
 export function condenseForFilter(text: string): string {
-  return unleet(text)
+  return unleet(foldForFilter(text))
     .replace(/[^a-z0-9\s]/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -104,12 +168,6 @@ export function stripVowels(text: string): string {
     .trim();
 }
 
-interface WordRule {
-  word: string;
-  direct: RegExp;
-  vowelCollapsed: RegExp | null;
-}
-
 interface PhraseRule {
   phrase: string;
   direct: RegExp;
@@ -122,15 +180,41 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// Compiled once at module load rather than on every keystroke.
-const WORD_RULES: WordRule[] = BANNED_WORDS.map((word) => ({
-  word,
-  direct: new RegExp(`\\b${escapeRegex(word)}\\b`),
-  vowelCollapsed:
-    word.length >= VOWEL_CHECK_MIN_LENGTH
-      ? new RegExp(`\\b${escapeRegex(stripVowels(word))}\\b`)
-      : null,
-}));
+/**
+ * Every banned surface form, mapped back to the canonical word we report.
+ * Built once at module load rather than on every keystroke.
+ */
+const FORM_TO_WORD = new Map<string, string>();
+/** Vowel-collapsed surface form ("fckng") → canonical word, for "f*cking". */
+const COLLAPSED_TO_WORD = new Map<string, string>();
+
+for (const word of BANNED_EXACT) {
+  FORM_TO_WORD.set(word, word);
+}
+
+for (const stem of BANNED_STEMS) {
+  for (const suffix of SUFFIXES) {
+    const form = `${stem}${suffix}`;
+    if (!FORM_TO_WORD.has(form)) FORM_TO_WORD.set(form, stem);
+
+    const collapsed = stripVowels(form);
+    // Very short collapsed forms ("sht") collide with innocent text, and the
+    // direct pass already covers the plain spelling.
+    if (collapsed.length >= 3 && !COLLAPSED_TO_WORD.has(collapsed)) {
+      COLLAPSED_TO_WORD.set(collapsed, stem);
+    }
+  }
+}
+
+function alternation(forms: Iterable<string>): string {
+  return [...forms]
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegex)
+    .join("|");
+}
+
+const FORM_PATTERN = new RegExp(`\\b(?:${alternation(FORM_TO_WORD.keys())})\\b`);
+const COLLAPSED_PATTERN = new RegExp(`\\b(?:${alternation(COLLAPSED_TO_WORD.keys())})\\b`);
 
 const PHRASE_RULES: PhraseRule[] = BANNED_PHRASES.map((phrase) => ({
   phrase,
@@ -154,9 +238,10 @@ export interface BannedResult {
 export function findBannedContent(text: string): BannedResult {
   if (!text) return { hit: false, match: null, type: null };
 
-  const normalized = normalizeForFilter(text);
+  const folded = foldForFilter(text);
+  const normalized = normalizeForFilter(folded);
   const lettersJoined = collapseLetterRuns(normalized);
-  const vowelCollapsed = stripVowels(condenseForFilter(text));
+  const vowelCollapsed = stripVowels(condenseForFilter(folded));
 
   // Phrases first: they may contain words that are also in the word list.
   for (const rule of PHRASE_RULES) {
@@ -169,13 +254,16 @@ export function findBannedContent(text: string): BannedResult {
     }
   }
 
-  for (const rule of WORD_RULES) {
-    if (rule.direct.test(normalized) || rule.direct.test(lettersJoined)) {
-      return { hit: true, match: rule.word, type: "word" };
-    }
-    if (rule.vowelCollapsed?.test(vowelCollapsed)) {
-      return { hit: true, match: rule.word, type: "word" };
-    }
+  const direct = FORM_PATTERN.exec(normalized) ?? FORM_PATTERN.exec(lettersJoined);
+  if (direct) {
+    const word = FORM_TO_WORD.get(direct[0]);
+    if (word) return { hit: true, match: word, type: "word" };
+  }
+
+  const collapsed = COLLAPSED_PATTERN.exec(vowelCollapsed);
+  if (collapsed) {
+    const word = COLLAPSED_TO_WORD.get(collapsed[0]);
+    if (word) return { hit: true, match: word, type: "word" };
   }
 
   return { hit: false, match: null, type: null };

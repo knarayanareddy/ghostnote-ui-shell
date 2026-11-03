@@ -15,6 +15,11 @@ const envSchema = z.object({
   VITE_SUPABASE_PUBLISHABLE_KEY: z
     .string({ required_error: "VITE_SUPABASE_PUBLISHABLE_KEY is missing" })
     .min(20, "VITE_SUPABASE_PUBLISHABLE_KEY looks too short to be a Supabase key"),
+  /**
+   * Optional Cloudflare Turnstile site key. When set, anonymous sign-in carries
+   * a token; pair it with the CAPTCHA switch in the Supabase dashboard.
+   */
+  VITE_TURNSTILE_SITE_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -23,6 +28,7 @@ function loadEnv(): Env {
   const parsed = envSchema.safeParse({
     VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
     VITE_SUPABASE_PUBLISHABLE_KEY: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    VITE_TURNSTILE_SITE_KEY: import.meta.env.VITE_TURNSTILE_SITE_KEY,
   });
 
   if (!parsed.success) {

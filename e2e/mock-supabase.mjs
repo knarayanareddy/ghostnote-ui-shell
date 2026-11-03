@@ -191,7 +191,17 @@ const server = createServer(async (req, res) => {
           });
           return;
         }
-        if (/\b(fuck|shit|bastard)\b/.test(text.toLowerCase())) {
+        // Simplified mirror of public.find_banned_content (the authoritative
+        // implementation lives in supabase/migrations). Enough to keep the
+        // hermetic specs honest about staging and inflections.
+        const folded = text
+          .normalize("NFKC")
+          .replace(/[\u200B-\u200F\u2060\uFEFF\u00AD\u180E]/g, "")
+          .replace(/[\u0430\u0435\u043E\u0440\u0441\u0443\u0445\u0456]/g, (c) =>
+            ({ "\u0430": "a", "\u0435": "e", "\u043E": "o", "\u0440": "p", "\u0441": "c", "\u0443": "y", "\u0445": "x", "\u0456": "i" })[c],
+          )
+          .toLowerCase();
+        if (/\b(fuck|shit|bastard|bitch)(s|es|ed|er|ers|ing|ings|y|ty)?\b/.test(folded)) {
           json(res, 400, { code: "23514", message: "note contains blocked content" });
           return;
         }
@@ -263,6 +273,16 @@ const server = createServer(async (req, res) => {
       }
 
       case "claim_ghost_note": {
+        // Mirrors the S-1 cap in claim_ghost_note(): 5 an hour per identity.
+        const already = notes.filter((note) => note.recipientId === userId).length;
+        if (already >= 5) {
+          json(res, 400, {
+            code: "53400",
+            message: "rate limit: at most 5 notes per hour",
+          });
+          return;
+        }
+
         const next = notes.find((note) => note.status === "queued" && note.authorId !== userId);
         if (!next) {
           json(res, 200, []);
