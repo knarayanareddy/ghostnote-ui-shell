@@ -258,6 +258,12 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  // Readiness probe for Playwright's webServer (it issues a GET).
+  if (path === "/__mock/health") {
+    json(res, 200, { ok: true });
+    return;
+  }
+
   // Test-only admin endpoint so a spec can reset the queue between runs.
   if (path === "/__mock/reset" && req.method === "POST") {
     seed();

@@ -13,7 +13,9 @@ import { defineConfig, devices } from "@playwright/test";
  *
  * First run needs a browser: `npx playwright install chromium`.
  */
-const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:8080";
+// Dedicated port: `dev:e2e` uses --strictPort so Playwright can never
+// silently reuse a `npm run dev` server wired to the real project.
+const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:8090";
 const hermetic = !process.env.E2E_BASE_URL;
 
 export default defineConfig({
@@ -32,13 +34,13 @@ export default defineConfig({
     ? [
         {
           command: "node e2e/mock-supabase.mjs",
-          url: "http://127.0.0.1:54399/__mock/reset",
+          url: "http://127.0.0.1:54399/__mock/health",
           reuseExistingServer: !process.env.CI,
           timeout: 30_000,
         },
         {
           command: "npm run dev:e2e",
-          url: "http://localhost:8080",
+          url: "http://localhost:8090",
           reuseExistingServer: !process.env.CI,
           timeout: 120_000,
         },
