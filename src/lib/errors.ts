@@ -88,6 +88,24 @@ export function describeError(error: unknown): ErrorHelp {
     };
   }
 
+  // Turnstile, or Supabase refusing a sign-in without a token
+  if (normalized.includes("captcha") || normalized.includes("anti-spam check")) {
+    return {
+      title: "The anti-spam check didn't finish",
+      description:
+        "Something blocked the challenge — usually an extension or a strict network. Reload and try once more.",
+    };
+  }
+
+  // Postgres: 53400 from the rate limits (send, receive, report)
+  if (normalized.includes("rate limit") || normalized.includes("53400")) {
+    return {
+      title: "That's a lot for one hour",
+      description:
+        "Notes are capped per person so nobody can empty the queue or flood a stranger. It resets on its own.",
+    };
+  }
+
   // Browser-level network failures
   if (
     normalized.includes("failed to fetch") ||

@@ -107,6 +107,10 @@ Writes to `notes` go through the table's INSERT policy plus an
 `recipient_id`/`delivered_at`/`opened_at`, enforces 15–500 characters, applies
 the content filter and rate limits to 10 notes per hour per author.
 
+Receiving is capped too: `claim_ghost_note` refuses past **5 notes an hour per
+identity**, and `public.reclaim_stale_notes()` returns notes that were claimed but
+never opened to the pool after 24 hours (hourly via `pg_cron` when available).
+
 ## Security model
 
 - **Anonymity is enforced in the database.** `notes.author_id` and
@@ -122,11 +126,13 @@ the content filter and rate limits to 10 notes per hour per author.
   rate limits to 20 per day.
 - **Content filtering has two layers.** `src/lib/bannedFilter.ts` gives instant
   client feedback; `public.find_banned_content` is the authoritative check in
-  the insert trigger. It handles leet digits (`sh1t`), punctuation substitution
-  (`f*ck`, `f.u.c.k`), vowel-dropped forms (`fck`), punctuation-joined phrases
-  (`kill-yourself`) and letter-spaced text (`f u c k`, `k i l l y o u r s e l f`).
-  Both layers are covered by tests (`src/lib/bannedFilter.test.ts`,
-  `supabase/tests/rls.test.sql`) and must stay in sync.
+  the insert trigger. It folds input first (NFKC, zero-width characters, Cyrillic
+  and Greek homoglyphs), then matches leet digits (`sh1t`), punctuation
+  substitution (`f*ck`, `f.u.c.k`), inflections (`fucking`, `shitty`,
+  `retarded`), vowel-dropped forms (`fck`), punctuation-joined phrases
+  (`kill-yourself`) and letter-spaced text (`f u c k`). Both layers are covered
+  by tests (`src/lib/bannedFilter*.test.ts`, `supabase/tests/rls.test.sql`) and
+  must stay in sync — a 36-case corpus is checked against both.
 - **Moderation** has a read path: `public.moderation_queue` (service role only) —
   see [docs/MODERATION.md](docs/MODERATION.md).
 
@@ -142,16 +148,19 @@ the content filter and rate limits to 10 notes per hour per author.
   spellings and obfuscations that share no letters with the banned word still
   slip through. Move to an Edge Function + real classifier when volume justifies
   it.
-- Rate limits are per author per hour (10) and per reporter per day (20), not
-  per IP.
+- Rate limits are per identity: 10 notes an hour sent, 5 an hour received, 20
+  reports a day — not per IP. Identities are free until a CAPTCHA is enabled
+  (`VITE_TURNSTILE_SITE_KEY` + Attack Protection in the dashboard), so a scripted
+  attacker can rotate identities to get a fresh allowance.
 - Anonymous sessions are per browser: clearing storage means a new identity and
   an empty journal. There is no recovery by design.
 
 ## Testing
 
 ```bash
-npm test          # 46 tests: filter rules, Inbox state machine, full-app jsdom flows
-npm run db:test   # pgTAP (21 assertions): RLS, anonymity, forged inserts, report abuse
+npm test          # unit + app tests: filter rules, Inbox state machine, full-app jsdom flows
+npm run db:test   # pgTAP (43 assertions): RLS, anonymity, forged inserts, report abuse,
+                  #   the receive cap, reclaim, and the filter corpus
 npm run e2e       # Playwright browser smoke tests (hermetic)
 ```
 

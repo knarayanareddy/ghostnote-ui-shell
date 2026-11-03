@@ -62,6 +62,11 @@ notes. Until it is applied:
 - `notes` is still readable with the public key, so anyone who opens devtools can
   read other people's notes.
 
+**What it applies:** the schema, the security hardening, and (since
+`20261103101500`) the receive cap and the filter rewrite — so this step is also
+what makes S-1 and S-2 in the red-team review real. A project that was pushed
+before that migration needs another `npm run db:push`.
+
 **Steps:**
 
 ```bash
@@ -115,6 +120,45 @@ policies — they key off `auth.uid()`, not off the key itself.
 
 ---
 
+## 4. Turn on the CAPTCHA (optional, but recommended)
+
+**Why:** anonymous identities are free, so every per-identity limit — 10 notes
+an hour, 5 notes received an hour — resets by signing up again. A CAPTCHA is what
+makes those limits mean something (S-4 in
+[`SECURITY-REDTEAM.md`](SECURITY-REDTEAM.md)).
+
+**Steps:**
+
+1. Create a Turnstile widget at <https://dash.cloudflare.com/?to=/:account/turnstile>
+   for your domain; copy the **site key**.
+2. Add it to `.env` and to your host's env: `VITE_TURNSTILE_SITE_KEY=0x4AAA…`,
+   then redeploy.
+3. Supabase dashboard → **Authentication → Attack Protection** → enable
+   **CAPTCHA protection**, choose Turnstile, paste the **secret key**.
+
+Both halves are needed. With only the dashboard switch on, sign-ins fail with
+"The anti-spam check didn't finish"; with only the site key set, the token is sent
+but not verified. If you also ship a CSP, it must allow
+`https://challenges.cloudflare.com` in `script-src`, `connect-src` and `frame-src`.
+
+## 5. Keep the queue alive
+
+**Why:** a note that was claimed but never opened would otherwise sit assigned to
+an identity forever. `public.reclaim_stale_notes()` returns unopened notes to the
+pool after 24 hours.
+
+If the project has `pg_cron`, the migration already scheduled it hourly. If not:
+
+```sql
+-- once
+create extension if not exists pg_cron;
+select cron.schedule('reclaim-stale-notes', '17 * * * *',
+                     $$select public.reclaim_stale_notes()$$);
+```
+
+Or call it from any scheduler you already run (a daily Edge Function is enough).
+It is revoked from clients on purpose — do not grant it to `authenticated`.
+
 ## Final verification
 
 ```bash
@@ -129,6 +173,16 @@ npm run preflight     # against the real project
 `preflight` exits `0` and prints `Ready.` only when all six checks pass: env
 present, key hygiene, project reachable, anonymous sign-ins on, RPCs deployed,
 notes not client-readable.
+
+`preflight` cannot see the receive cap or the filter rewrite — they are inside
+function bodies. To confirm the new migration actually landed, check in the SQL
+editor:
+
+```sql
+select proname from pg_proc
+where proname in ('reclaim_stale_notes', 'fold_for_filter');   -- expect 2 rows
+select public.find_banned_content('you are a fucking idiot');  -- expect 'fuck', not null
+```
 
 If it fails, it prints the fixes in dependency order — enabling anonymous
 sign-ins and pushing the migration first, because the other failures are usually

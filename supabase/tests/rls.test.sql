@@ -14,7 +14,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(21);
+select plan(43);
 
 -- ── Fixtures ───────────────────────────────────────────────────────────────
 -- The insert trigger derives author_id from the JWT claim, so the claim has to
@@ -165,6 +165,84 @@ select lives_ok(
 );
 
 reset role;
+
+-- ── S-2: the filter matches inflections, compounds and homoglyphs ──────────
+-- These all passed the pre-hardening filter untouched; see
+-- docs/SECURITY-REDTEAM.md.
+select is(public.find_banned_content('you are a fucking idiot'), 'fuck', 'inflected -ing is caught');
+select is(public.find_banned_content('he fucked this up'), 'fuck', 'past tense is caught');
+select is(public.find_banned_content('what a shitty thing to say'), 'shit', 'adjectival -ty is caught');
+select is(public.find_banned_content('that is bullshit'), 'bullshit', 'compound is caught');
+select is(public.find_banned_content('you are an asshole'), 'asshole', 'ass-compound is caught');
+select is(public.find_banned_content('you retarded piece of work'), 'retard', 'retard + -ed is caught');
+select is(public.find_banned_content('the bitches on this app'), 'bitch', 'bitch + -es is caught');
+select is(public.find_banned_content('you f*cking idiot'), 'fuck', 'punctuation + inflection is caught');
+select is(public.find_banned_content('you fuсk ing idiot'), 'fuck', 'Cyrillic с homoglyph is caught');
+select is(public.find_banned_content('you ｆｕｃｋ ing idiot'), 'fuck', 'fullwidth homoglyph is caught');
+select is(public.find_banned_content('k' || chr(8203) || 'ys'), 'kys', 'zero-width space does not hide a phrase');
+
+-- …and ordinary English still passes, which is the harder half.
+select is(public.find_banned_content('classic kindness, thank you'), null, 'no false positive: classic');
+select is(public.find_banned_content('please assess this honestly'), null, 'no false positive: assess');
+select is(public.find_banned_content('I will assume the best'), null, 'no false positive: assume');
+select is(public.find_banned_content('the assassin spared everyone'), null, 'no false positive: assassin');
+select is(public.find_banned_content('damning with faint praise'), null, 'no false positive: damning');
+
+-- ── S-1: one identity cannot receive the whole queue ───────────────────────
+-- Eight notes from eight distinct authors: five may be claimed, the sixth must
+-- be refused, and three stay in the pool for everyone else.
+do $$
+declare i int;
+begin
+  for i in 1..8 loop
+    perform set_config('request.jwt.claim.sub', gen_random_uuid()::text, true);
+    insert into public.notes (body) values ('A kind note for a stranger, number ' || i || '.');
+  end loop;
+end $$;
+
+set local role authenticated;
+set local "request.jwt.claim.sub" to '44444444-4444-4444-4444-444444444444';
+
+select lives_ok(
+  $$ select public.claim_ghost_note() from generate_series(1,5) $$,
+  'five claims inside the hourly allowance are fine'
+);
+
+select throws_ok(
+  $$ select public.claim_ghost_note() $$,
+  '53400',
+  null,
+  'the sixth claim within an hour is refused'
+);
+
+reset role;
+
+select is(
+  (select count(*) from public.notes where status = 'queued') > 0,
+  true,
+  'the queue still has notes for other visitors after a cap hit'
+);
+
+-- Reclaim: a note delivered but never opened goes back to the pool.
+update public.notes
+set delivered_at = now() - interval '25 hours'
+where recipient_id = '44444444-4444-4444-4444-444444444444';
+
+select ok(
+  public.reclaim_stale_notes() > 0,
+  'unopened notes older than the grace period are reclaimed'
+);
+
+select is(
+  (select count(*) from public.notes where recipient_id = '44444444-4444-4444-4444-444444444444'),
+  0::bigint,
+  'the reclaim clears the recipient so the note is claimable again'
+);
+
+select ok(
+  not has_function_privilege('authenticated', 'public.reclaim_stale_notes(interval)', 'EXECUTE'),
+  'clients cannot call reclaim_stale_notes()'
+);
 
 select * from finish();
 
