@@ -11,10 +11,12 @@
 //   3. a vowel-collapsed pass so "f*ck", "f.u.c.k" and "fck" all collapse onto
 //      the same shape as "fuck" (only for words long enough not to collide
 //      with innocent words)
+//   4. a letter-run pass so "f u c k" and "k i l l y o u r s e l f" collapse
+//      back into whole words
 //
-// Known limitation (documented in the migration too): fully letter-spaced
-// text such as "f u c k" is not detected. A real classifier belongs in an
-// Edge Function once volume justifies it.
+// What it still cannot catch (documented in the migration too): novel spellings
+// and obfuscations that share no letters with the banned word. A real
+// classifier belongs in an Edge Function once volume justifies it.
 
 const BANNED_WORDS = [
   "fuck",
@@ -67,6 +69,33 @@ export function condenseForFilter(text: string): string {
     .trim();
 }
 
+/**
+ * Joins runs of single-letter tokens: "f u c k this" → "fuck this".
+ *
+ * Token-based rather than regex-based so it can never merge into the middle of
+ * a normal word — "i a m proud" becomes "iam proud", which matches nothing.
+ */
+export function collapseLetterRuns(text: string): string {
+  const words = text.split(/\s+/).filter(Boolean);
+  const output: string[] = [];
+  let buffer = "";
+
+  for (const word of words) {
+    if (/^[a-z]$/.test(word)) {
+      buffer += word;
+      continue;
+    }
+    if (buffer) {
+      output.push(buffer);
+      buffer = "";
+    }
+    output.push(word);
+  }
+
+  if (buffer) output.push(buffer);
+  return output.join(" ");
+}
+
 /** Vowels removed, whitespace collapsed. */
 export function stripVowels(text: string): string {
   return text
@@ -84,6 +113,8 @@ interface WordRule {
 interface PhraseRule {
   phrase: string;
   direct: RegExp;
+  /** matches the phrase once letter runs are joined: "killyourself" */
+  lettersJoined: RegExp;
   vowelCollapsed: RegExp;
 }
 
@@ -104,6 +135,7 @@ const WORD_RULES: WordRule[] = BANNED_WORDS.map((word) => ({
 const PHRASE_RULES: PhraseRule[] = BANNED_PHRASES.map((phrase) => ({
   phrase,
   direct: new RegExp(`\\b${phrase.split(/\s+/).map(escapeRegex).join("\\s+")}\\b`),
+  lettersJoined: new RegExp(`\\b${escapeRegex(phrase.replace(/\s+/g, ""))}\\b`),
   vowelCollapsed: new RegExp(
     `\\b${escapeRegex(stripVowels(phrase.replace(/\s+/g, "")))}\\b`,
   ),
@@ -123,17 +155,22 @@ export function findBannedContent(text: string): BannedResult {
   if (!text) return { hit: false, match: null, type: null };
 
   const normalized = normalizeForFilter(text);
+  const lettersJoined = collapseLetterRuns(normalized);
   const vowelCollapsed = stripVowels(condenseForFilter(text));
 
   // Phrases first: they may contain words that are also in the word list.
   for (const rule of PHRASE_RULES) {
-    if (rule.direct.test(normalized) || rule.vowelCollapsed.test(vowelCollapsed)) {
+    if (
+      rule.direct.test(normalized) ||
+      rule.lettersJoined.test(lettersJoined) ||
+      rule.vowelCollapsed.test(vowelCollapsed)
+    ) {
       return { hit: true, match: rule.phrase, type: "phrase" };
     }
   }
 
   for (const rule of WORD_RULES) {
-    if (rule.direct.test(normalized)) {
+    if (rule.direct.test(normalized) || rule.direct.test(lettersJoined)) {
       return { hit: true, match: rule.word, type: "word" };
     }
     if (rule.vowelCollapsed?.test(vowelCollapsed)) {

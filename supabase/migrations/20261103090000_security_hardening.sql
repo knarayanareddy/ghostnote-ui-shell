@@ -21,12 +21,13 @@
 --   * Moderators get `public.moderation_queue` (service role only, see
 --     docs/MODERATION.md).
 --
--- Known limitation: the content filter is heuristic. It handles leet digits
--- ("sh1t"), punctuation substitution ("f*ck", "f.u.c.k"), punctuation-joined
--- phrases ("kill-yourself") and the obvious slurs, but it cannot catch every
--- evasion (e.g. fully letter-spaced text "f u c k", or novel spellings).
--- Once volume justifies it, move moderation to an Edge Function backed by a
--- real classifier; keep this filter as a cheap first pass.
+-- The content filter is heuristic and layered: leet digits ("sh1t"),
+-- punctuation substitution ("f*ck", "f.u.c.k"), vowel-collapsed forms
+-- ("fck"), punctuation-joined phrases ("kill-yourself") and letter-spaced text
+-- ("f u c k", "k i l l y o u r s e l f"). What it still cannot catch: novel
+-- spellings and deliberately obfuscated variants with no letters in common
+-- with the banned word. Once volume justifies it, move moderation to an Edge
+-- Function backed by a real classifier; keep this as a cheap first pass.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -194,6 +195,42 @@ AS $$
          );
 $$;
 
+-- Collapses runs of single-letter tokens: "f u c k this" -> "fuck this".
+-- Token-based (not regex) so it can never merge across a normal word, which
+-- keeps the false-positive rate at zero for ordinary prose.
+CREATE OR REPLACE FUNCTION public.collapse_letter_runs(p_text TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  v_words TEXT[] := regexp_split_to_array(btrim(coalesce(p_text, '')), '\s+');
+  v_buffer TEXT := '';
+  v_out TEXT[] := '{}';
+  v_word TEXT;
+BEGIN
+  FOREACH v_word IN ARRAY v_words LOOP
+    CONTINUE WHEN v_word = '';
+
+    IF v_word ~ '^[a-z]$' THEN
+      v_buffer := v_buffer || v_word;
+    ELSE
+      IF v_buffer <> '' THEN
+        v_out := v_out || v_buffer;
+        v_buffer := '';
+      END IF;
+      v_out := v_out || v_word;
+    END IF;
+  END LOOP;
+
+  IF v_buffer <> '' THEN
+    v_out := v_out || v_buffer;
+  END IF;
+
+  RETURN array_to_string(v_out, ' ');
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.find_banned_content(p_text TEXT)
 RETURNS TEXT
 LANGUAGE plpgsql
@@ -201,6 +238,7 @@ IMMUTABLE
 AS $$
 DECLARE
   v_norm TEXT := public.normalize_for_filter(p_text);
+  v_spaced TEXT := public.collapse_letter_runs(public.normalize_for_filter(p_text));
   v_cond TEXT := public.no_vowels(public.condense_for_filter(p_text));
   v_word TEXT;
   v_phrase TEXT;
@@ -215,6 +253,10 @@ BEGIN
     IF v_norm ~ ('\y' || replace(v_phrase, ' ', '\s+') || '\y') THEN
       RETURN v_phrase;
     END IF;
+    -- Letter-spaced phrasing: "k i l l y o u r s e l f" -> "killyourself"
+    IF v_spaced ~ ('\y' || replace(v_phrase, ' ', '') || '\y') THEN
+      RETURN v_phrase;
+    END IF;
     IF v_cond ~ ('\y' || public.no_vowels(replace(v_phrase, ' ', '')) || '\y') THEN
       RETURN v_phrase;
     END IF;
@@ -222,6 +264,9 @@ BEGIN
 
   FOREACH v_word IN ARRAY v_banned LOOP
     IF v_norm ~ ('\y' || v_word || '\y') THEN
+      RETURN v_word;
+    END IF;
+    IF v_spaced ~ ('\y' || v_word || '\y') THEN
       RETURN v_word;
     END IF;
     -- Vowel-collapsed check only for longer words: shorter ones ("ass")
@@ -445,6 +490,7 @@ REVOKE ALL ON FUNCTION public.find_banned_content(TEXT) FROM PUBLIC, anon, authe
 REVOKE ALL ON FUNCTION public.normalize_for_filter(TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.condense_for_filter(TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.no_vowels(TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.collapse_letter_runs(TEXT) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.enforce_note_insert() FROM PUBLIC, anon, authenticated;
 
 -- Index for the report rate-limit lookup.

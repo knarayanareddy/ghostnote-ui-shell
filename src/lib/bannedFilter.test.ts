@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  collapseLetterRuns,
   condenseForFilter,
   findBannedContent,
   normalizeForFilter,
@@ -21,6 +22,8 @@ describe("findBannedContent", () => {
       "assist me with the passage",
       "grab a coffee and breathe",
       "hmm, psst, look at the class",
+      "i a m proud of you, grade a b student",
+      "option a. b. c. all look fine",
     ])("does not flag %j", (text) => {
       expect(findBannedContent(text).hit).toBe(false);
     });
@@ -55,10 +58,17 @@ describe("findBannedContent", () => {
       expect(findBannedContent(input)).toMatchObject({ hit: true, match: expected });
     });
 
-    it("documents the known limitation: fully letter-spaced text", () => {
-      // Not detected by design — see the migration header. If this ever starts
-      // failing, the filter got stronger and the docs should be updated.
-      expect(findBannedContent("f u c k this").hit).toBe(false);
+    it.each([
+      ["f u c k this", "fuck"],
+      ["k i l l y o u r s e l f", "kill yourself"],
+      ["what the s h i t", "shit"],
+    ])("joins letter-spaced text %j", (input, expected) => {
+      expect(findBannedContent(input)).toMatchObject({ hit: true, match: expected });
+    });
+
+    it("does not merge scattered single letters into a false positive", () => {
+      // "i a m" becomes "iam" — which must not trip any rule.
+      expect(findBannedContent("i a m proud of you, grade a b student").hit).toBe(false);
     });
   });
 
@@ -82,5 +92,11 @@ describe("filter primitives", () => {
 
   it("strips vowels and collapses whitespace", () => {
     expect(stripVowels("f u c k  this")).toBe("f c k ths");
+  });
+
+  it("joins runs of single letters only", () => {
+    expect(collapseLetterRuns("f u c k this")).toBe("fuck this");
+    expect(collapseLetterRuns("grade a b student")).toBe("grade ab student");
+    expect(collapseLetterRuns("hello world")).toBe("hello world");
   });
 });
