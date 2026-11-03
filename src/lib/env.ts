@@ -9,12 +9,17 @@ import { z } from "zod";
  * here turns that into one actionable message in the console.
  */
 const envSchema = z.object({
-  VITE_SUPABASE_URL: z
-    .string({ required_error: "VITE_SUPABASE_URL is missing" })
-    .url("VITE_SUPABASE_URL must be a valid URL (e.g. https://xyz.supabase.co)"),
+  // Zod 4 replaced required_error/invalid_type_error with a single `error`.
+  // Zod 4 moved string formats to the top level; `z.string().url()` is deprecated.
+  // Zod 4 reports the same `error` for a missing and for a malformed value, so
+  // the message has to cover both.
+  VITE_SUPABASE_URL: z.url({
+    error:
+      "VITE_SUPABASE_URL is missing or not a valid URL (e.g. https://xyz.supabase.co)",
+  }),
   VITE_SUPABASE_PUBLISHABLE_KEY: z
-    .string({ required_error: "VITE_SUPABASE_PUBLISHABLE_KEY is missing" })
-    .min(20, "VITE_SUPABASE_PUBLISHABLE_KEY looks too short to be a Supabase key"),
+    .string({ error: "VITE_SUPABASE_PUBLISHABLE_KEY is missing" })
+    .min(20, { error: "VITE_SUPABASE_PUBLISHABLE_KEY looks too short to be a Supabase key" }),
   /**
    * Optional Cloudflare Turnstile site key. When set, anonymous sign-in carries
    * a token; pair it with the CAPTCHA switch in the Supabase dashboard.
