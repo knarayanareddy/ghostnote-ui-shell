@@ -27,7 +27,7 @@ const ReportDialog = ({ noteId, open, onOpenChange, onReported }: ReportDialogPr
     setSubmitting(true);
     const { error } = await supabase.rpc("report_note", {
       p_note_id: noteId,
-      p_reason: reason.trim() || null,
+      p_reason: reason.trim() || undefined,
     });
     setSubmitting(false);
 

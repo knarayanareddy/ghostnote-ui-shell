@@ -1,78 +1,58 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Flag } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import NoteCard from "@/components/NoteCard";
 import EmptyState from "@/components/EmptyState";
 import ReportDialog from "@/components/ReportDialog";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-
-interface JournalNote {
-  id: string;
-  body: string;
-  tag: string | null;
-  delivered_at: string | null;
-}
+import ReportButton from "@/components/ReportButton";
+import PageLoader from "@/components/PageLoader";
+import { useJournal } from "@/hooks/useJournal";
 
 const Journal = () => {
-  const [notes, setNotes] = useState<JournalNote[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: notes, isPending, isError, error, refetch } = useJournal();
   const [reportNoteId, setReportNoteId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchNotes = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      const { data } = await supabase
-        .from("notes")
-        .select("id, body, tag, delivered_at")
-        .eq("recipient_id", user.id)
-        .eq("status", "delivered")
-        .order("delivered_at", { ascending: false });
-
-      setNotes((data as JournalNote[]) ?? []);
-      setLoading(false);
-    };
-
-    fetchNotes();
-  }, []);
+  const queryClient = useQueryClient();
 
   const handleReported = () => {
-    if (reportNoteId) {
-      setNotes((prev) => prev.filter((n) => n.id !== reportNoteId));
-    }
     setReportNoteId(null);
+    // The reported note leaves the journal (status becomes 'reported'); refresh
+    // the list and the header counters rather than mutating local state only.
+    void queryClient.invalidateQueries({ queryKey: ["journal"] });
+    void queryClient.invalidateQueries({ queryKey: ["stats"] });
     toast("Reported. Thanks for keeping Kindling kind.");
   };
 
   return (
     <div className="animate-fade-in space-y-6">
       <div>
-        <h1 className="text-2xl font-bold mb-1">Ghost Journal</h1>
+        <h1 className="mb-1 text-2xl font-bold">Ghost Journal</h1>
         <p className="text-sm text-muted-foreground">
           A private shelf of kindness you've received. Only you can see these.
         </p>
       </div>
 
-      {loading ? (
-        <div className="flex flex-col items-center py-16">
-          <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground mt-3">Loading…</p>
+      {isPending ? (
+        <PageLoader label="Loading your journal…" />
+      ) : isError ? (
+        <div role="alert" className="space-y-4 py-12 text-center">
+          <p className="text-sm font-medium text-destructive">
+            We couldn't load your journal.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {error instanceof Error ? error.message : "Unknown error"}
+          </p>
+          <Button variant="outline" onClick={() => void refetch()}>
+            Try again
+          </Button>
         </div>
       ) : notes.length === 0 ? (
         <EmptyState
           message="Your journal is empty."
           submessage="Summon a note to start your collection."
         >
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <Button asChild>
               <Link to="/inbox">Check inbox</Link>
             </Button>
@@ -83,25 +63,19 @@ const Journal = () => {
         </EmptyState>
       ) : (
         <div className="space-y-4">
-          {notes.map((n, i) => (
+          {notes.map((note, index) => (
             <div
-              key={n.id}
-              className="space-y-1 animate-slide-up"
-              style={{ animationDelay: `${i * 80}ms` }}
+              key={note.id}
+              className="animate-slide-up space-y-1"
+              style={{ animationDelay: `${index * 80}ms` }}
             >
               <NoteCard
-                content={n.body}
-                tag={n.tag ?? undefined}
-                date={n.delivered_at ?? undefined}
+                content={note.body}
+                tag={note.tag ?? undefined}
+                date={note.delivered_at ?? undefined}
               />
               <div className="flex justify-end px-1">
-                <button
-                  onClick={() => setReportNoteId(n.id)}
-                  className="flex items-center gap-1 text-[11px] text-muted-foreground/40 hover:text-destructive transition-colors"
-                >
-                  <Flag className="w-3 h-3" />
-                  Report
-                </button>
+                <ReportButton onClick={() => setReportNoteId(note.id)} />
               </div>
             </div>
           ))}
@@ -111,8 +85,10 @@ const Journal = () => {
       {reportNoteId && (
         <ReportDialog
           noteId={reportNoteId}
-          open={true}
-          onOpenChange={(open) => { if (!open) setReportNoteId(null); }}
+          open
+          onOpenChange={(open) => {
+            if (!open) setReportNoteId(null);
+          }}
           onReported={handleReported}
         />
       )}

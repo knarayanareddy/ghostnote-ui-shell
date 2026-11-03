@@ -1,52 +1,61 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Ghost } from "lucide-react";
 import TagChips from "@/components/TagChips";
 import { supabase } from "@/integrations/supabase/client";
-import { useStats } from "@/components/StatsProvider";
+import { useAuth } from "@/lib/auth-context";
 import { findBannedContent } from "@/lib/bannedFilter";
 
 type PageState = "form" | "sending" | "success" | "error";
 
+const MIN_LENGTH = 15;
+const MAX_LENGTH = 500;
+
 const Write = () => {
-  const { refreshStats } = useStats();
+  const { userId } = useAuth();
+  const queryClient = useQueryClient();
   const [content, setContent] = useState("");
   const [tag, setTag] = useState<string | null>(null);
   const [isKind, setIsKind] = useState(false);
   const [pageState, setPageState] = useState<PageState>("form");
   const [errorMsg, setErrorMsg] = useState("");
   const [showDrift, setShowDrift] = useState(false);
+  const driftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (driftTimer.current) clearTimeout(driftTimer.current);
+    },
+    [],
+  );
 
   const trimmed = content.trim();
   const bannedResult = trimmed.length > 0 ? findBannedContent(trimmed) : { hit: false, match: null };
   const canSubmit =
     isKind &&
-    trimmed.length >= 15 &&
-    trimmed.length <= 500 &&
+    trimmed.length >= MIN_LENGTH &&
+    trimmed.length <= MAX_LENGTH &&
     !bannedResult.hit &&
     pageState === "form";
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
 
-    setPageState("sending");
-    setErrorMsg("");
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setErrorMsg("Not signed in. Please refresh the page.");
+    if (!userId) {
+      setErrorMsg("Still connecting. Give it a second and try again.");
       setPageState("error");
       return;
     }
 
+    setPageState("sending");
+    setErrorMsg("");
+
     const { error } = await supabase.from("notes").insert({
-      author_id: user.id,
+      author_id: userId,
       body: trimmed,
       tag,
     });
@@ -57,9 +66,9 @@ const Write = () => {
       return;
     }
 
-    refreshStats();
+    void queryClient.invalidateQueries({ queryKey: ["stats"] });
     setShowDrift(true);
-    setTimeout(() => {
+    driftTimer.current = setTimeout(() => {
       setShowDrift(false);
       setPageState("success");
     }, 1200);
@@ -78,27 +87,25 @@ const Write = () => {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <div className="animate-drift">
-          <Ghost className="w-12 h-12 text-primary" />
+          <Ghost className="h-12 w-12 text-primary" />
         </div>
-        <p className="text-sm text-muted-foreground mt-6 animate-fade-in">
-          Drifting away…
-        </p>
+        <p className="mt-6 animate-fade-in text-sm text-muted-foreground">Drifting away…</p>
       </div>
     );
   }
 
   if (pageState === "success") {
     return (
-      <div className="flex flex-col items-center text-center py-12 sm:py-16 animate-fade-in">
-        <Ghost className="w-10 h-10 text-primary mb-4 animate-ghost-float" />
-        <h1 className="text-2xl font-bold mb-2">Sent.</h1>
-        <p className="text-muted-foreground max-w-sm mb-2 text-sm">
+      <div className="animate-fade-in flex flex-col items-center py-12 text-center sm:py-16">
+        <Ghost className="mb-4 h-10 w-10 animate-ghost-float text-primary" />
+        <h1 className="mb-2 text-2xl font-bold">Sent.</h1>
+        <p className="mb-2 max-w-sm text-sm text-muted-foreground">
           Your note is drifting. Someone may receive it the next time they open Kindling.
         </p>
-        <p className="text-xs text-muted-foreground/60 mb-8">
+        <p className="mb-8 text-xs text-muted-foreground/70">
           You won't know who. That's the point.
         </p>
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
           <Button asChild className="sm:min-w-[140px]">
             <Link to="/inbox">Summon a note</Link>
           </Button>
@@ -113,39 +120,46 @@ const Write = () => {
   return (
     <div className="animate-fade-in space-y-6">
       <div>
-        <h1 className="text-2xl font-bold mb-1">Write a note</h1>
+        <h1 className="mb-1 text-2xl font-bold">Write a note</h1>
         <p className="text-sm text-muted-foreground">
           Send something kind into the world. No names. No replies. It just drifts.
         </p>
       </div>
 
       <div className="space-y-1.5">
+        <label htmlFor="note-body" className="sr-only">
+          Your note
+        </label>
         <Textarea
+          id="note-body"
           placeholder="Write something kind to a stranger…"
-          className="min-h-[160px] bg-paper border shadow-paper resize-none font-serif text-[15px] leading-[1.75] focus-visible:ring-primary/30"
+          className="min-h-[160px] resize-none border bg-paper font-serif text-[15px] leading-[1.75] shadow-paper focus-visible:ring-primary/30"
           value={content}
-          onChange={(e) => setContent(e.target.value)}
-          maxLength={500}
+          onChange={(event) => setContent(event.target.value)}
+          maxLength={MAX_LENGTH}
           disabled={pageState === "sending"}
+          aria-describedby="note-counter note-error"
         />
-        <div className="flex justify-between text-xs text-muted-foreground px-0.5">
-          <span>
-            {trimmed.length > 0 && trimmed.length < 15
-              ? `${15 - trimmed.length} more characters needed`
+        <div className="flex justify-between px-0.5 text-xs text-muted-foreground">
+          <span id="note-counter">
+            {trimmed.length > 0 && trimmed.length < MIN_LENGTH
+              ? `${MIN_LENGTH - trimmed.length} more characters needed`
               : "\u00A0"}
           </span>
-          <span className="tabular-nums">{trimmed.length}/500</span>
+          <span className="tabular-nums">
+            {trimmed.length}/{MAX_LENGTH}
+          </span>
         </div>
       </div>
 
       {bannedResult.hit && (
-        <p className="text-sm font-medium text-destructive animate-fade-in">
+        <p id="note-error" role="alert" className="animate-fade-in text-sm font-medium text-destructive">
           Keep it kind.{bannedResult.match ? ` Please remove: "${bannedResult.match}"` : ""}
         </p>
       )}
 
       <div>
-        <p className="text-sm font-medium text-foreground mb-2">Tag (optional)</p>
+        <p className="mb-2 text-sm font-medium text-foreground">Tag (optional)</p>
         <TagChips selected={tag} onSelect={setTag} />
       </div>
 
@@ -157,16 +171,15 @@ const Write = () => {
           className="mt-0.5"
           disabled={pageState === "sending"}
         />
-        <label
-          htmlFor="kindness"
-          className="text-sm text-foreground cursor-pointer leading-snug"
-        >
+        <label htmlFor="kindness" className="cursor-pointer text-sm leading-snug text-foreground">
           This is kind. No hate. No threats.
         </label>
       </div>
 
       {pageState === "error" && errorMsg && (
-        <p className="text-sm text-destructive animate-fade-in">{errorMsg}</p>
+        <p role="alert" className="animate-fade-in text-sm text-destructive">
+          {errorMsg}
+        </p>
       )}
 
       <Button
@@ -177,7 +190,7 @@ const Write = () => {
       >
         {pageState === "sending" ? (
           <span className="flex items-center gap-2">
-            <Ghost className="w-4 h-4 animate-pulse" />
+            <Ghost className="h-4 w-4 animate-pulse" />
             Sending…
           </span>
         ) : (
