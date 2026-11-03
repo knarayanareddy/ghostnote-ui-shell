@@ -97,6 +97,23 @@ export function describeError(error: unknown): ErrorHelp {
     };
   }
 
+  // Postgres: 23514 from the content filter in the insert trigger
+  if (normalized.includes("blocked content")) {
+    return {
+      title: "That wording isn't allowed here",
+      description:
+        "Kindling blocks insults and threats so nobody opens one by accident. Try saying it another way.",
+    };
+  }
+
+  // Postgres: 23514 from the length constraints
+  if (normalized.includes("between 15 and 500") || normalized.includes("notes_body_length")) {
+    return {
+      title: "That note is the wrong length",
+      description: "A note needs at least 15 characters and no more than 500.",
+    };
+  }
+
   // Postgres: 53400 from the rate limits (send, receive, report)
   if (normalized.includes("rate limit") || normalized.includes("53400")) {
     return {

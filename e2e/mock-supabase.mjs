@@ -20,6 +20,9 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 
 const PORT = Number(process.env.MOCK_SUPABASE_PORT ?? 54399);
+/** Emulate a project pushed before the queue cap + filter migration (S-1/S-2). */
+const STALE_SCHEMA = process.env.MOCK_SUPABASE_STALE_SCHEMA === "1";
+
 /** Emulate the pre-migration schema (no safe RPCs, notes table readable). */
 const LEGACY = process.env.MOCK_SUPABASE_LEGACY === "1";
 const HOST = process.env.MOCK_SUPABASE_HOST ?? "0.0.0.0";
@@ -149,6 +152,20 @@ const server = createServer(async (req, res) => {
 
   if (path === "/auth/v1/user" && req.method === "GET") {
     const userId = userFrom(req);
+    // schema_state() is granted to anon on purpose — preflight has no session.
+    if (fn === "schema_state") {
+      json(res, 200, {
+        latest_expected: "20261103120000_schema_state_and_page_journal",
+        migrations: {
+          "20260401163617_initial_schema": true,
+          "20261103090000_security_hardening": true,
+          "20261103101500_claim_cap_and_filter_fold": !STALE_SCHEMA,
+          "20261103120000_schema_state_and_page_journal": !STALE_SCHEMA,
+        },
+      });
+      return;
+    }
+
     if (!userId) {
       json(res, 401, { message: "no session" });
       return;
@@ -237,6 +254,20 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // schema_state() is granted to anon on purpose — preflight has no session.
+    if (fn === "schema_state") {
+      json(res, 200, {
+        latest_expected: "20261103120000_schema_state_and_page_journal",
+        migrations: {
+          "20260401163617_initial_schema": true,
+          "20261103090000_security_hardening": true,
+          "20261103101500_claim_cap_and_filter_fold": !STALE_SCHEMA,
+          "20261103120000_schema_state_and_page_journal": !STALE_SCHEMA,
+        },
+      });
+      return;
+    }
+
     if (!userId) {
       json(res, 401, { message: "no session" });
       return;
@@ -256,6 +287,8 @@ const server = createServer(async (req, res) => {
       }
 
       case "get_my_journal": {
+        const limit = Number(body.p_limit ?? 50);
+        const offset = Number(body.p_offset ?? 0);
         json(
           res,
           200,
@@ -267,7 +300,8 @@ const server = createServer(async (req, res) => {
               tag: note.tag,
               delivered_at: note.deliveredAt,
               opened_at: null,
-            })),
+            }))
+            .slice(Math.max(offset, 0), Math.max(offset, 0) + Math.min(Math.max(limit, 1), 100)),
         );
         return;
       }

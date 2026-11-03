@@ -14,7 +14,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(43);
+select plan(50);
 
 -- ── Fixtures ───────────────────────────────────────────────────────────────
 -- The insert trigger derives author_id from the JWT claim, so the claim has to
@@ -243,6 +243,63 @@ select ok(
   not has_function_privilege('authenticated', 'public.reclaim_stale_notes(interval)', 'EXECUTE'),
   'clients cannot call reclaim_stale_notes()'
 );
+
+-- ── S-12: grant hygiene and paging ─────────────────────────────────────────
+select ok(
+  not has_table_privilege('authenticated', 'public.notes', 'UPDATE'),
+  'authenticated cannot UPDATE notes'
+);
+
+select ok(
+  not has_table_privilege('authenticated', 'public.notes', 'DELETE'),
+  'authenticated cannot DELETE notes'
+);
+
+select is(
+  (public.schema_state() -> 'migrations' ->> '20261103101500_claim_cap_and_filter_fold')::boolean,
+  true,
+  'schema_state reports the queue cap and filter migration'
+);
+
+select is(
+  (public.schema_state() -> 'migrations' ->> '20261103090000_security_hardening')::boolean,
+  true,
+  'schema_state reports the hardening migration'
+);
+
+-- Three notes for a fresh recipient, then page through them.
+do $$
+declare i int;
+begin
+  for i in 1..3 loop
+    perform set_config('request.jwt.claim.sub', gen_random_uuid()::text, true);
+    insert into public.notes (body) values ('A paged kind note for a stranger, ' || i || '.');
+  end loop;
+end $$;
+
+set local role authenticated;
+set local "request.jwt.claim.sub" to '55555555-5555-5555-5555-555555555555';
+select public.claim_ghost_note() from generate_series(1,3);
+
+select is(
+  (select count(*)::int from public.get_my_journal(2, 0)),
+  2,
+  'the journal honours the page limit'
+);
+
+select is(
+  (select count(*)::int from public.get_my_journal(2, 2)),
+  1,
+  'the second page returns the remainder'
+);
+
+select is(
+  (select count(*)::int from public.get_my_journal(500, 0)),
+  3,
+  'an oversized limit is clamped but still returns everything that exists'
+);
+
+reset role;
 
 select * from finish();
 

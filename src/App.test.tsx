@@ -77,6 +77,17 @@ describe("anonymous session gate", () => {
     expect(signInAnonymously).toHaveBeenCalledTimes(1);
   });
 
+  it("offers a way to end the anonymous session on a shared device", async () => {
+    goTo("/");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Forget this device" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Forget this device?" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/already sent or received are not deleted/i)).toBeInTheDocument();
+  });
+
   it("explains an un-migrated database instead of showing a raw error", async () => {
     rpc.mockImplementation(async (fn: string) =>
       fn === "get_my_journal"

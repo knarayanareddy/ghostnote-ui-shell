@@ -8,7 +8,7 @@ import EmptyState from "@/components/EmptyState";
 import ReportDialog from "@/components/ReportDialog";
 import ReportButton from "@/components/ReportButton";
 import PageLoader from "@/components/PageLoader";
-import { useJournal } from "@/hooks/useJournal";
+import { JOURNAL_PAGE_SIZE, useJournal } from "@/hooks/useJournal";
 import { describeError } from "@/lib/errors";
 
 const JournalError = ({ error, onRetry }: { error: unknown; onRetry: () => void }) => {
@@ -31,7 +31,8 @@ const JournalError = ({ error, onRetry }: { error: unknown; onRetry: () => void 
 };
 
 const Journal = () => {
-  const { data: notes, isPending, isError, error, refetch } = useJournal();
+  const [limit, setLimit] = useState(JOURNAL_PAGE_SIZE);
+  const { data: notes, isPending, isError, error, refetch } = useJournal(limit);
   const [reportNoteId, setReportNoteId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -89,6 +90,17 @@ const Journal = () => {
               </div>
             </div>
           ))}
+
+          {notes.length >= limit && (
+            <div className="pt-2 text-center">
+              <Button
+                variant="outline"
+                onClick={() => setLimit((value) => value + JOURNAL_PAGE_SIZE)}
+              >
+                Show older notes
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

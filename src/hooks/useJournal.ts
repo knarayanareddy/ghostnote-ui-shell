@@ -17,14 +17,17 @@ export interface JournalNote {
  * Errors are surfaced through `isError`, so a failed request no longer looks
  * like "your journal is empty".
  */
-export function useJournal() {
+/** Matches the default page size in get_my_journal(). */
+export const JOURNAL_PAGE_SIZE = 50;
+
+export function useJournal(limit: number = JOURNAL_PAGE_SIZE) {
   const { userId } = useAuth();
 
   return useQuery({
-    queryKey: ["journal", userId],
+    queryKey: ["journal", userId, limit],
     enabled: Boolean(userId),
     queryFn: async (): Promise<JournalNote[]> => {
-      const { data, error } = await supabase.rpc("get_my_journal");
+      const { data, error } = await supabase.rpc("get_my_journal", { p_limit: limit });
 
       if (error) {
         throw new Error(error.message);

@@ -111,6 +111,10 @@ Receiving is capped too: `claim_ghost_note` refuses past **5 notes an hour per
 identity**, and `public.reclaim_stale_notes()` returns notes that were claimed but
 never opened to the pool after 24 hours (hourly via `pg_cron` when available).
 
+`public.schema_state()` reports which migrations a project actually carries, so
+`npm run preflight` can refuse a half-migrated project instead of reporting
+`Ready.`
+
 ## Security model
 
 - **Anonymity is enforced in the database.** `notes.author_id` and
@@ -135,6 +139,10 @@ never opened to the pool after 24 hours (hourly via `pg_cron` when available).
   must stay in sync — a 36-case corpus is checked against both.
 - **Moderation** has a read path: `public.moderation_queue` (service role only) —
   see [docs/MODERATION.md](docs/MODERATION.md).
+- **Sessions are device-local and disposable.** There is no account to log out of,
+  so the footer carries **Forget this device**: it signs out, clears only the
+  Supabase keys from storage, and starts a fresh identity. Notes already sent or
+  received are not deleted — the dialog says so.
 
 ### Known limitations
 
@@ -159,8 +167,8 @@ never opened to the pool after 24 hours (hourly via `pg_cron` when available).
 
 ```bash
 npm test          # unit + app tests: filter rules, Inbox state machine, full-app jsdom flows
-npm run db:test   # pgTAP (43 assertions): RLS, anonymity, forged inserts, report abuse,
-                  #   the receive cap, reclaim, and the filter corpus
+npm run db:test   # pgTAP (50 assertions): RLS, anonymity, forged inserts, report abuse,
+                  #   the receive cap, reclaim, grant hygiene, paging, the filter corpus
 npm run e2e       # Playwright browser smoke tests (hermetic)
 ```
 

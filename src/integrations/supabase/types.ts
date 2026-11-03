@@ -106,7 +106,10 @@ export type Database = {
         }
       }
       get_my_journal: {
-        Args: Record<PropertyKey, never>
+        Args: {
+          p_limit?: number
+          p_offset?: number
+        }
         Returns: {
           id: string
           body: string

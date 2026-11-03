@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { Ghost } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -5,6 +6,7 @@ import { useStats } from "@/hooks/useStats";
 import { Button } from "@/components/ui/button";
 import PageLoader from "@/components/PageLoader";
 import { describeError } from "@/lib/errors";
+import ForgetDeviceDialog from "@/components/ForgetDeviceDialog";
 
 const navItems = [
   { label: "Home", path: "/" },
@@ -62,6 +64,7 @@ const AuthError = ({ message, onRetry }: { message: string | null; onRetry: () =
 const AppLayoutInner = () => {
   const location = useLocation();
   const { status, error, retry } = useAuth();
+  const [showForget, setShowForget] = useState(false);
 
   if (status === "loading") {
     return <PageLoader label="Waking the ghosts…" />;
@@ -123,10 +126,21 @@ const AppLayoutInner = () => {
       </main>
 
       <footer className="border-t py-4">
-        <p className="text-center text-[11px] text-muted-foreground/50">
-          No accounts. No tracking. Just kindness.
-        </p>
+        <div className="flex flex-col items-center gap-1">
+          <p className="text-center text-[11px] text-muted-foreground/50">
+            No accounts. No tracking. Just kindness.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowForget(true)}
+            className="rounded text-[11px] text-muted-foreground/60 underline-offset-2 hover:text-foreground hover:underline"
+          >
+            Forget this device
+          </button>
+        </div>
       </footer>
+
+      <ForgetDeviceDialog open={showForget} onOpenChange={setShowForget} />
     </div>
   );
 };

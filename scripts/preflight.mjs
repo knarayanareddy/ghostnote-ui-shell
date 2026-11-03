@@ -7,7 +7,8 @@
  *   npm run preflight -- --url https://xyz.supabase.co --key <publishable key>
  *
  * It verifies the three go-live steps from docs/GO-LIVE.md:
- *   1. migrations applied  (safe RPCs exist, notes are no longer client-readable)
+ *   1. migrations applied  (safe RPCs exist, notes are no longer client-readable,
+ *                           public.schema_state() reports every migration)
  *   2. credentials         (env present, key not committed, project reachable)
  *   3. anonymous sign-ins  (enabled — the app cannot create a session without it)
  *
@@ -265,7 +266,55 @@ export async function runPreflight({
     "npm run db:push  (applies supabase/migrations/)",
   );
 
-  // 6 ── migrations: notes must no longer be client-readable
+  // 6 ── migrations: does the project carry *every* migration?
+  // The RPC check above cannot see this: get_my_journal has existed since the
+  // first hardening migration. schema_state() probes the catalog, so a project
+  // that was pushed before the queue cap reports it here instead of saying Ready.
+  const schemaProbe = await request(`${url}/rest/v1/rpc/schema_state`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "content-type": "application/json",
+    },
+    body: "{}",
+  });
+
+  if (schemaProbe.status === 404 || schemaProbe.body?.code === "PGRST202") {
+    add(
+      "migrations-schema",
+      "Migrations: schema_state()",
+      "fail",
+      "schema_state() not found — this project predates the queue/filter fix",
+      "npm run db:push  (applies supabase/migrations/)",
+    );
+  } else if (schemaProbe.status === 200 && schemaProbe.body?.migrations) {
+    const migrations = schemaProbe.body.migrations;
+    const missing = Object.entries(migrations)
+      .filter(([, applied]) => applied !== true)
+      .map(([name]) => name);
+    const applied = Object.keys(migrations).length - missing.length;
+
+    add(
+      "migrations-schema",
+      "Migrations: schema_state()",
+      missing.length === 0 ? "pass" : "fail",
+      missing.length === 0
+        ? `${applied}/${Object.keys(migrations).length} migrations applied (latest: ${schemaProbe.body.latest_expected})`
+        : `missing ${missing.join(", ")}`,
+      "npm run db:push  (applies supabase/migrations/)",
+    );
+  } else {
+    add(
+      "migrations-schema",
+      "Migrations: schema_state()",
+      "unknown",
+      `inconclusive (HTTP ${schemaProbe.status})`,
+      "npm run db:push  (applies supabase/migrations/)",
+    );
+  }
+
+  // 7 ── migrations: notes must no longer be client-readable
   const notesProbe = await request(
     `${url}/rest/v1/notes?select=id&limit=1`,
     { headers: { apikey: key, Authorization: `Bearer ${key}` } },
@@ -284,7 +333,7 @@ export async function runPreflight({
     "npm run db:push  (applies supabase/migrations/)",
   );
 
-  // 7 ── trigger enforcement (opt-in: only with a session, and it is a probe)
+  // 8 ── trigger enforcement (opt-in: only with a session, and it is a probe)
   if (session?.access_token) {
     add(
       "migrations-trigger",
