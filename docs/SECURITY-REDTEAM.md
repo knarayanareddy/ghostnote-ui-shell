@@ -54,7 +54,7 @@ Then `npm run preflight` should print **`Ready.`** (step-by-step detail:
       is a hosting decision.
 - [ ] **S-3** Rotate the key — still the single highest-value five minutes here.
 
-S-6 was partly fixed in this review; S-7..S-12 are lower priority.
+S-6 is now closed (0 critical/high, 12 dev-only moderates); S-9..S-12 are lower priority.
 
 ---
 
@@ -67,7 +67,7 @@ S-6 was partly fixed in this review; S-7..S-12 are lower priority.
 | S-3 | **High** | A02 / A05 | Publishable key committed to public history, not yet rotated | Open (runbook) |
 | S-4 | **High** | A07 / A04 | Anonymous identities are free and unlimited — every rate limit resets | **Plumbed** — enable in dashboard |
 | S-5 | **Medium** | A05 | No CSP, no security headers, no `frame-ancestors` | Open (config supplied) |
-| S-6 | **Medium** | A06 | 22 advisories, 2 critical / 2 high, 3 in production deps | **Partially fixed** |
+| S-6 | **Medium** | A06 | Outdated toolchain; 24 advisories incl. 2 critical | **Fixed** — 0 critical/high |
 | S-7 | **Medium** | A07 | Session never expires or ends; one browser = one permanent identity | **Fixed** — "Forget this device" |
 | S-8 | **Low** | A05 / A09 | Raw Postgres error strings rendered in the UI | **Fixed** |
 | S-9 | **Low** | A05 | `allowedHosts: true` on a `::`-bound dev server | Open (dev only) |
@@ -378,40 +378,51 @@ metadata), and there is no `SRI` to add value on a hashed asset.
 
 ---
 
-## S-6 · Medium · Vulnerable and outdated components — partly fixed
+## S-6 · Medium · Vulnerable and outdated components — **fixed**
 
 **OWASP:** A06
 
-`npm audit` at `83fa2b5`: **24 advisories — 2 critical, 16 high, 6 moderate**;
+Starting point at `83fa2b5`: **24 advisories — 2 critical, 16 high, 6 moderate**;
 production-only: **4 high**.
 
-Applied in this review: `npm audit fix` (semver-compatible only). Result:
+Then, in two passes: `npm audit fix` (semver-compatible only), and a deliberate
+toolchain upgrade — React 19, React Router 7, Vite 8, Vitest 5, jsdom 30, Zod 4,
+plugin-react-swc 4.
 
-| | Before | After |
-| --- | --- | --- |
-| total | 24 | **22** |
-| critical | 2 | 2 |
-| high | 16 | **2** |
-| moderate | 6 | 18 |
-| production deps | 4 high | **1 high, 2 moderate** |
+| | Start | After audit fix | **Now** |
+| --- | --- | --- | --- |
+| total | 24 | 22 | **12** |
+| critical | 2 | 2 | **0** |
+| high | 16 | 2 | **0** |
+| moderate | 6 | 18 | 12 |
+| production deps | 4 high | 1 high, 2 moderate | **0** |
 
-The moderate count rising is not a regression: packages that previously carried a
-*high* advisory now carry only *lower-severity* ones (e.g. `minimatch`'s ReDoS was
-replaced by a moderate cancellation-bypass advisory). No package got worse, and
-the two criticals were already there.
+The remaining twelve are all the ESLint toolchain (`minimatch`/`@typescript-eslint`
+chain) — dev-only, no runtime exposure. Clearing those needs ESLint 10, which is
+not worth the churn on its own; Dependabot will surface it when the plugins catch
+up.
 
-What remains, and whether it can hurt *this* app:
+**Deliberately not upgraded**, with the reasoning:
 
-| Package | Sev | Reality check |
-| --- | --- | --- |
-| `vitest` / `tinypool` | critical | Test runner only; never shipped. Prototype pollution via worker options — not reachable from untrusted input here. Fix: `npm i -D vitest@5` (major). |
-| `vite` | high | Dev server only. Path traversal on optimised deps — exposed only if the dev server is reachable by others (see S-9). Fix: `npm i -D vite@latest` (major). |
-| `zod` | high | Runtime, but the app validates a two-key env object; the advisory needs oversized constrained collections. Not remotely reachable. Fix: `zod@4` (breaking). |
-| `react-router` / `@remix-run/router` | moderate | Runtime, shipped. Advisories need untrusted paths in `<Link>`/`useNavigate`/redirects. Every target in this app is a literal (`/`, `/write`, `/inbox`, `/journal`) and there is no `navigate()` call anywhere — **not reachable as written**. Fix anyway: `npm i react-router-dom@7`. |
-| eslint chain, `glob`, `postcss`, `rollup`, `esbuild`, … | high→moderate | Build/test tooling. Updated in-range where possible. |
+| Package | Why it waits |
+| --- | --- |
+| `tailwindcss` 3 → 4 | CSS-first config, renamed utilities. It is a visual change, and this environment has no browser to check the result. Needs a human on a preview. |
+| `typescript` 5.8 → 7 | The native (Go) compiler; `tsc -b` with project references is its least-settled path. Pilot separately. |
+| `eslint` 9 → 10 | Config and plugin compatibility churn for a dev-only advisory. |
+| `date-fns` 4, `sonner` 2, `lucide-react` 1.x, `tailwind-merge` 3, `@types/node`, `eslint-plugin-react-hooks` 7 | Majors with no security driver; do them when the file next needs touching. |
 
-**Follow-ups:** upgrade the four majors deliberately (one PR, tests green), add
-Dependabot, and fail CI on new *production* highs (`npm audit --omit=dev --audit-level=high`).
+Two things this upgrade changed that are worth knowing:
+
+- **Node floor moved.** Vite 8 needs `^20.19 || >=22.12`, Vitest 5 and jsdom 30
+  need `^22.22.2 || ^24.15 || >=26`, so `engines` and the README now say
+  `^22.22.2 || ^24.15.0 || >=26`. Node 20 can no longer run the suite.
+- **Chunking API moved.** Vite 8 is Rolldown-based; the `manualChunks` record no
+  longer works (it silently put `react-dom` in the radix chunk), so the config
+  uses `advancedChunks.groups`.
+
+**Still recommended:** add Dependabot (this drift is why the review was needed),
+SHA-pin the CI actions (S-10), and fail CI on new *production* advisories with
+`npm audit --omit=dev --audit-level=high`.
 
 ---
 
@@ -557,7 +568,7 @@ Worth stating plainly, because most of the design is sound:
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Advisories | `npm audit`, `npm audit --omit=dev` | 24 → 22 after fix; prod 4 → 3 |
+| Advisories | `npm audit`, `npm audit --omit=dev` | 24 → **12** (0 critical/high); prod 4 high → **0** |
 | Install reproducibility | `npm ci` after lock change | 426 packages, clean |
 | Typecheck / tests / lint / build | `tsc -b`, `vitest run`, `eslint`, `vite build` | clean, 61 pass, 0 errors |
 | Filter bypass corpus | 19 variants through `findBannedContent` | **12 missed** |

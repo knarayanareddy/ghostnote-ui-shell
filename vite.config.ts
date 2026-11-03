@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => ({
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
     },
     dedupe: [
       "react",
@@ -33,17 +33,23 @@ export default defineConfig(({ mode }) => ({
     // Vendor chunks change far less often than app code, so splitting them
     // keeps the browser cache warm across deploys (and keeps any single chunk
     // under Vite's 500 kB warning threshold).
+    //
+    // Vite 8 is Rolldown-based: chunk groups are declared with
+    // `advancedChunks`, and the old `manualChunks` record no longer types — the
+    // function form is accepted but react-dom still ended up in the radix chunk.
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ["react", "react-dom", "react-router-dom"],
-          supabase: ["@supabase/supabase-js"],
-          radix: [
-            "@radix-ui/react-checkbox",
-            "@radix-ui/react-dialog",
-            "@radix-ui/react-slot",
-            "@radix-ui/react-tooltip",
-            "sonner",
+        advancedChunks: {
+          groups: [
+            {
+              name: "react",
+              test: /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/,
+            },
+            { name: "supabase", test: /[\\/]node_modules[\\/]@supabase[\\/]/ },
+            {
+              name: "radix",
+              test: /[\\/]node_modules[\\/](@radix-ui|sonner|@floating-ui)[\\/]/,
+            },
           ],
         },
       },
